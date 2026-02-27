@@ -58,6 +58,10 @@ const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canva
         {...shapeProps}
         visible={isVisible}
         draggable
+        // NEW: Opacity and Blending Modes
+        opacity={shapeProps.opacity !== undefined ? shapeProps.opacity / 100 : 1}
+        globalCompositeOperation={shapeProps.blendMode || 'source-over'}
+        // End New
         filters={shapeProps.blur > 0 ? [Konva.Filters.Blur] : []}
         blurRadius={shapeProps.blur || 0}
         shadowColor="rgba(0,0,0,0.6)"
