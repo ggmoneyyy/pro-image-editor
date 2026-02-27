@@ -1,203 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Stage, Layer, Image as KonvaImage, Transformer } from 'react-konva';
-import useImage from 'use-image';
+import { Stage, Layer } from 'react-konva';
 import { 
-  ImagePlus, Download, Trash2, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Layout
+  ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor
 } from 'lucide-react';
+import SetupScreen from './components/SetupScreen';
+import URLImage from './components/URLImage';
 import './index.css';
 
-// --- COMPONENT: Initial Canvas Setup Screen ---
-const SetupScreen = ({ onComplete }) => {
-    const PRESETS = [
-        { name: '16x9', width: 1920, height: 1080 },
-        { name: 'Panoramic', width: 6828, height: 1080 },
-        { name: 'GN Tile Wall', width: 3840, height: 1080 },
-        { name: 'Square', width: 1080, height: 1080 },
-    ];
-
-    const [selectedMode, setSelectedMode] = useState(PRESETS[0]);
-    const [customW, setCustomW] = useState(1920);
-    const [customH, setCustomH] = useState(1080);
-
-    const handleStart = () => {
-        if (selectedMode === 'free') {
-            onComplete({ name: 'Custom', width: Number(customW), height: Number(customH) });
-        } else {
-            onComplete(selectedMode);
-        }
-    };
-
-    return (
-        <div className="setup-container">
-            <div className="setup-card">
-                <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px'}}>
-                    <Layout size={28} color="#3b82f6" />
-                    <h1 style={{margin: 0, fontSize: '1.5rem'}}>Create New Project</h1>
-                </div>
-                <p className="helper-text" style={{marginBottom: '30px', fontSize: '0.9rem'}}>Select a canvas template or enter custom dimensions.</p>
-
-                <div className="preset-grid">
-                    {PRESETS.map((preset) => (
-                        <div 
-                            key={preset.name}
-                            className={`preset-btn ${selectedMode.name === preset.name ? 'selected' : ''}`}
-                            onClick={() => setSelectedMode(preset)}
-                        >
-                            <div className="preset-title">{preset.name}</div>
-                            <div className="preset-dim">{preset.width} × {preset.height} px</div>
-                        </div>
-                    ))}
-                    <div 
-                        className={`preset-btn ${selectedMode === 'free' ? 'selected' : ''}`}
-                        onClick={() => setSelectedMode('free')}
-                    >
-                        <div className="preset-title">Free</div>
-                        <div className="preset-dim">Custom dimensions</div>
-                    </div>
-                </div>
-
-                {selectedMode === 'free' && (
-                    <div className="custom-dim-form">
-                        <div style={{flex: 1}}>
-                            <label style={{fontSize: '0.8rem', color: '#9ca3af'}}>Width (px)</label>
-                            <input type="number" className="custom-input" value={customW} onChange={e => setCustomW(e.target.value)} />
-                        </div>
-                        <div style={{flex: 1}}>
-                            <label style={{fontSize: '0.8rem', color: '#9ca3af'}}>Height (px)</label>
-                            <input type="number" className="custom-input" value={customH} onChange={e => setCustomH(e.target.value)} />
-                        </div>
-                    </div>
-                )}
-
-                <button 
-                    className="start-btn" 
-                    onClick={handleStart}
-                    disabled={selectedMode === 'free' && (!customW || !customH || customW < 10 || customH < 10)}
-                >
-                    Create Canvas
-                </button>
-            </div>
-        </div>
-    );
-};
-
-// --- COMPONENT: Individual Image Layer ---
-const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canvasWidth, canvasHeight }) => {
-  const [image] = useImage(shapeProps.src, 'anonymous');
-  const shapeRef = useRef();
-  const trRef = useRef();
-
-  const isVisible = shapeProps.visible !== false;
-
-  useEffect(() => {
-    if (isSelected && isVisible && trRef.current) {
-      trRef.current.nodes([shapeRef.current]);
-      trRef.current.getLayer().batchDraw();
-    }
-  }, [isSelected, isVisible, shapeProps]); 
-
-  useEffect(() => {
-    if (image && shapeRef.current) {
-      if (shapeProps.blur > 0) {
-        shapeRef.current.cache();
-      } else {
-        shapeRef.current.clearCache();
-      }
-    }
-  }, [image, shapeProps.blur, shapeProps.width, shapeProps.height]);
-
-  const handleDragMove = (e) => {
-    const SNAP_OFFSET = 20; 
-    const node = e.target;
-    let newX = node.x();
-    let newY = node.y();
-    
-    const width = node.width() * node.scaleX();
-    const height = node.height() * node.scaleY();
-
-    if (Math.abs(newX) < SNAP_OFFSET) newX = 0; 
-    if (Math.abs(newX + width - canvasWidth) < SNAP_OFFSET) newX = canvasWidth - width; 
-    if (Math.abs(newX + width/2 - canvasWidth/2) < SNAP_OFFSET) newX = canvasWidth/2 - width/2; 
-
-    if (Math.abs(newY) < SNAP_OFFSET) newY = 0; 
-    if (Math.abs(newY + height - canvasHeight) < SNAP_OFFSET) newY = canvasHeight - height; 
-    if (Math.abs(newY + height/2 - canvasHeight/2) < SNAP_OFFSET) newY = canvasHeight/2 - height/2; 
-
-    node.x(newX);
-    node.y(newY);
-  };
-
-  return (
-    <React.Fragment>
-      <KonvaImage
-        onClick={onSelect}
-        onTap={onSelect}
-        ref={shapeRef}
-        image={image}
-        {...shapeProps}
-        visible={isVisible}
-        draggable
-        filters={shapeProps.blur > 0 ? [Konva.Filters.Blur] : []}
-        blurRadius={shapeProps.blur || 0}
-        shadowColor="rgba(0,0,0,0.6)"
-        shadowBlur={shapeProps.shadow ? 30 : 0}
-        shadowOffsetY={shapeProps.shadow ? 15 : 0}
-        shadowOpacity={shapeProps.shadow ? 1 : 0}
-        onDragMove={handleDragMove}
-        onDragEnd={(e) => {
-          onChange({
-            ...shapeProps,
-            x: e.target.x(),
-            y: e.target.y(),
-          });
-        }}
-        onTransformEnd={(e) => {
-          const node = shapeRef.current;
-          const scaleX = node.scaleX();
-          const scaleY = node.scaleY();
-
-          node.scaleX(1);
-          node.scaleY(1);
-          onChange({
-            ...shapeProps,
-            x: node.x(),
-            y: node.y(),
-            rotation: node.rotation(),
-            width: Math.max(5, node.width() * scaleX),
-            height: Math.max(5, node.height() * scaleY),
-          });
-        }}
-      />
-      {isSelected && isVisible && (
-        <Transformer
-          ref={trRef}
-          keepRatio={keepRatio} 
-          enabledAnchors={
-              keepRatio 
-                ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
-                : ['top-left', 'top-center', 'top-right', 'middle-right', 'bottom-right', 'bottom-center', 'bottom-left', 'middle-left']
-          }
-          boundBoxFunc={(oldBox, newBox) => {
-            if (newBox.width < 20 || newBox.height < 20) return oldBox;
-            return newBox;
-          }}
-          borderStroke="#3b82f6"
-          anchorStroke="#3b82f6"
-          anchorFill="#ffffff"
-          anchorSize={10}
-        />
-      )}
-    </React.Fragment>
-  );
-};
-
-// --- MAIN APPLICATION ---
 function App() {
   const [canvasConfig, setCanvasConfig] = useState(null);
-  
-  // Initialize with an empty string so the placeholder shows
   const [filenamePrefix, setFilenamePrefix] = useState('');
-
   const [history, setHistory] = useState([[]]); 
   const [historyStep, setHistoryStep] = useState(0); 
   
@@ -237,12 +49,11 @@ function App() {
           const confirmClose = window.confirm("Are you sure you want to close this project? All unsaved progress will be lost.");
           if (!confirmClose) return;
       }
-      
       setCanvasConfig(null);
       setHistory([[]]);
       setHistoryStep(0);
       selectShape(null);
-      setFilenamePrefix(''); // Reset to empty string
+      setFilenamePrefix(''); 
   };
 
   const commitHistory = (newImages) => {
@@ -354,9 +165,7 @@ function App() {
         const stage = stageRef.current;
         let uri;
         
-        // Use Untitled if they leave the placeholder empty
         const safePrefix = filenamePrefix.trim() || 'Untitled';
-        
         let templateSuffix = canvasConfig.name.toLowerCase();
         
         if (templateSuffix === 'gn tile wall') {
@@ -444,7 +253,6 @@ function App() {
     <div className="app-layout">
       
       <aside className="sidebar">
-        
         <div className="brand" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '30px'}}>
             <div>
                 Pro Editor
@@ -459,15 +267,9 @@ function App() {
                 className="layer-action-btn" 
                 title="Close Project" 
                 style={{
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '6px',
-                    color: '#ef4444', 
-                    background: 'rgba(239, 68, 68, 0.1)', 
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    fontSize: '0.8rem',
-                    fontWeight: '600'
+                    display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444', 
+                    background: 'rgba(239, 68, 68, 0.1)', padding: '6px 12px', borderRadius: '6px',
+                    fontSize: '0.8rem', fontWeight: '600'
                 }}
             >
                 <X size={16} /> Close
@@ -513,10 +315,7 @@ function App() {
                            setDragOverLayer(null);
                            document.querySelectorAll('.layer-item').forEach(el => el.classList.remove('is-dragging'));
                         }}
-                        className={`layer-item 
-                            ${selectedId === img.id ? 'active' : ''} 
-                            ${dragOverLayer === img.id ? 'drag-over' : ''}
-                        `}
+                        className={`layer-item ${selectedId === img.id ? 'active' : ''} ${dragOverLayer === img.id ? 'drag-over' : ''}`}
                         onClick={() => selectShape(img.id)}
                     >
                         <div className="layer-item-left">
@@ -524,18 +323,10 @@ function App() {
                             <span className={!isVisible ? 'dimmed-text' : ''}>{img.name}</span>
                         </div>
                         <div className="layer-item-actions">
-                            <button 
-                                className="layer-action-btn" 
-                                onClick={(e) => toggleVisibility(e, img.id)}
-                                title={isVisible ? "Hide Layer" : "Show Layer"}
-                            >
+                            <button className="layer-action-btn" onClick={(e) => toggleVisibility(e, img.id)} title={isVisible ? "Hide Layer" : "Show Layer"}>
                                 {isVisible ? <Eye size={16} /> : <EyeOff size={16} />}
                             </button>
-                            <button 
-                                className="layer-action-btn delete" 
-                                onClick={(e) => deleteLayerById(e, img.id)}
-                                title="Delete Layer"
-                            >
+                            <button className="layer-action-btn delete" onClick={(e) => deleteLayerById(e, img.id)} title="Delete Layer">
                                 <X size={16} />
                             </button>
                         </div>
@@ -555,11 +346,7 @@ function App() {
                         value={filenamePrefix}
                         onChange={(e) => setFilenamePrefix(e.target.value)}
                         placeholder="Filename"
-                        style={{
-                            width: '100%', boxSizing: 'border-box', background: 'transparent', 
-                            border: 'none', color: 'white', padding: '10px', 
-                            outline: 'none', fontSize: '0.85rem'
-                        }}
+                        style={{ width: '100%', boxSizing: 'border-box', background: 'transparent', border: 'none', color: 'white', padding: '10px', outline: 'none', fontSize: '0.85rem'}}
                     />
                 </div>
             </div>
@@ -569,28 +356,15 @@ function App() {
                 <strong>JPEG:</strong> Smaller size. Transparent areas will become solid white.
             </p>
             <div className="export-buttons">
-                <button className="tool-btn primary" onClick={() => exportCanvas('png')} title="Save with transparent background">
-                    PNG
-                </button>
-                <button className="tool-btn secondary" onClick={() => exportCanvas('jpeg')} title="Save with white background">
-                    JPEG
-                </button>
+                <button className="tool-btn primary" onClick={() => exportCanvas('png')}>PNG</button>
+                <button className="tool-btn secondary" onClick={() => exportCanvas('jpeg')}>JPEG</button>
             </div>
         </div>
       </aside>
 
       <main className="workspace" ref={containerRef}>
-        <div 
-            className="canvas-container" 
-            style={{ width: canvasConfig.width, height: canvasConfig.height, transform: `scale(${scale})` }}
-        >
-            <Stage 
-                width={canvasConfig.width} 
-                height={canvasConfig.height} 
-                onMouseDown={checkDeselect}
-                onTouchStart={checkDeselect}
-                ref={stageRef}
-            >
+        <div className="canvas-container" style={{ width: canvasConfig.width, height: canvasConfig.height, transform: `scale(${scale})` }}>
+            <Stage width={canvasConfig.width} height={canvasConfig.height} onMouseDown={checkDeselect} onTouchStart={checkDeselect} ref={stageRef}>
                 <Layer>
                     {images.map((img) => (
                         <URLImage
@@ -634,44 +408,28 @@ function App() {
                         <label>Scale</label>
                         <span style={{fontSize: '0.8rem', color: '#9ca3af'}}>{currentScalePct}%</span>
                     </div>
-                    <input 
-                        type="range" min="1" max="500" 
-                        value={currentScalePct}
-                        onChange={handleScaleChange}
-                    />
+                    <input type="range" min="1" max="500" value={currentScalePct} onChange={handleScaleChange} />
                 </div>
 
                 <hr style={{borderColor: '#374151', margin: '10px 0'}} />
 
                 <div className="control-group">
                     <label>
-                        <input 
-                            type="checkbox" 
-                            checked={keepRatio} 
-                            onChange={(e) => setKeepRatio(e.target.checked)}
-                        />
+                        <input type="checkbox" checked={keepRatio} onChange={(e) => setKeepRatio(e.target.checked)} />
                         Maintain Aspect Ratio
                     </label>
                 </div>
 
                 <div className="control-group">
                     <label>
-                        <input 
-                            type="checkbox" 
-                            checked={selectedImage.shadow} 
-                            onChange={(e) => updateImage(selectedId, { ...selectedImage, shadow: e.target.checked })}
-                        />
+                        <input type="checkbox" checked={selectedImage.shadow} onChange={(e) => updateImage(selectedId, { ...selectedImage, shadow: e.target.checked })} />
                         Drop Shadow
                     </label>
                 </div>
 
                 <div className="control-group">
                     <label>Blur: {selectedImage.blur}px</label>
-                    <input 
-                        type="range" min="0" max="100" 
-                        value={selectedImage.blur}
-                        onChange={(e) => updateImage(selectedId, { ...selectedImage, blur: Number(e.target.value) })}
-                    />
+                    <input type="range" min="0" max="100" value={selectedImage.blur} onChange={(e) => updateImage(selectedId, { ...selectedImage, blur: Number(e.target.value) })} />
                 </div>
             </div>
         )}
