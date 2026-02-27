@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Stage, Layer } from 'react-konva';
+import { Stage, Layer, Rect } from 'react-konva'; // Added Rect for background
 import { 
-  ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor
+  ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette
 } from 'lucide-react';
 import SetupScreen from './components/SetupScreen';
 import URLImage from './components/URLImage';
@@ -10,6 +10,10 @@ import './index.css';
 function App() {
   const [canvasConfig, setCanvasConfig] = useState(null);
   const [filenamePrefix, setFilenamePrefix] = useState('');
+  
+  // NEW: Background Color State
+  const [bgColor, setBgColor] = useState('transparent');
+
   const [history, setHistory] = useState([[]]); 
   const [historyStep, setHistoryStep] = useState(0); 
   
@@ -54,6 +58,7 @@ function App() {
       setHistoryStep(0);
       selectShape(null);
       setFilenamePrefix(''); 
+      setBgColor('transparent'); // Reset background
   };
 
   const commitHistory = (newImages) => {
@@ -67,7 +72,7 @@ function App() {
   const handleRedo = () => { if (historyStep < history.length - 1) setHistoryStep(historyStep + 1); };
 
   const checkDeselect = (e) => {
-    const clickedOnEmpty = e.target === e.target.getStage();
+    const clickedOnEmpty = e.target === e.target.getStage() || e.target.name() === 'canvas-background';
     if (clickedOnEmpty) selectShape(null);
   };
 
@@ -96,7 +101,10 @@ function App() {
           rotation: 0,
           blur: 0,
           shadow: false,
-          visible: true
+          visible: true,
+          // NEW: Default properties
+          opacity: 100,
+          blendMode: 'source-over'
         };
         commitHistory([...images, newImage]);
         selectShape(newImage.id); 
@@ -183,7 +191,8 @@ function App() {
             tempCanvas.height = canvas.height;
             const ctx = tempCanvas.getContext('2d');
             
-            ctx.fillStyle = '#ffffff';
+            // Apply background color to JPEG export
+            ctx.fillStyle = bgColor === 'transparent' ? '#ffffff' : bgColor;
             ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             ctx.drawImage(canvas, 0, 0);
             
@@ -335,9 +344,31 @@ function App() {
             </div>
         </div>
 
+        {/* NEW: Canvas & Export Settings */}
         <div className="export-panel">
-            <div className="panel-header" style={{marginBottom: '10px'}}>Export</div>
+            <div className="panel-header" style={{marginBottom: '10px'}}><Palette size={16} style={{display: 'inline', verticalAlign: 'text-bottom', marginRight: '4px'}}/> Canvas & Export</div>
             
+            <div style={{marginBottom: '15px', background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px'}}>
+                <label style={{display: 'block', fontSize: '0.75rem', color: '#9ca3af', marginBottom: '8px'}}>Background</label>
+                <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                    <input 
+                        type="color" 
+                        value={bgColor === 'transparent' ? '#ffffff' : bgColor} 
+                        onChange={(e) => setBgColor(e.target.value)}
+                        disabled={bgColor === 'transparent'}
+                        style={{cursor: bgColor === 'transparent' ? 'not-allowed' : 'pointer'}}
+                    />
+                    <label style={{fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'}}>
+                        <input 
+                            type="checkbox" 
+                            checked={bgColor !== 'transparent'} 
+                            onChange={(e) => setBgColor(e.target.checked ? '#000000' : 'transparent')} 
+                        />
+                        Solid Color
+                    </label>
+                </div>
+            </div>
+
             <div style={{marginBottom: '15px'}}>
                 <label style={{display: 'block', fontSize: '0.75rem', color: '#9ca3af', marginBottom: '6px'}}>Filename</label>
                 <div style={{background: '#111827', border: '1px solid #4b5563', borderRadius: '6px'}}>
@@ -351,10 +382,6 @@ function App() {
                 </div>
             </div>
 
-            <p className="helper-text" style={{marginBottom: '12px'}}>
-                <strong>PNG:</strong> Maintains transparency.<br/>
-                <strong>JPEG:</strong> Smaller size. Transparent areas will become solid white.
-            </p>
             <div className="export-buttons">
                 <button className="tool-btn primary" onClick={() => exportCanvas('png')}>PNG</button>
                 <button className="tool-btn secondary" onClick={() => exportCanvas('jpeg')}>JPEG</button>
@@ -366,6 +393,17 @@ function App() {
         <div className="canvas-container" style={{ width: canvasConfig.width, height: canvasConfig.height, transform: `scale(${scale})` }}>
             <Stage width={canvasConfig.width} height={canvasConfig.height} onMouseDown={checkDeselect} onTouchStart={checkDeselect} ref={stageRef}>
                 <Layer>
+                    {/* NEW: Solid Background Renderer */}
+                    {bgColor !== 'transparent' && (
+                        <Rect 
+                            name="canvas-background"
+                            x={0} y={0} 
+                            width={canvasConfig.width} height={canvasConfig.height} 
+                            fill={bgColor} 
+                            listening={true} // Allows clicking the bg to deselect images
+                        />
+                    )}
+
                     {images.map((img) => (
                         <URLImage
                             key={img.id}
@@ -411,7 +449,42 @@ function App() {
                     <input type="range" min="1" max="500" value={currentScalePct} onChange={handleScaleChange} />
                 </div>
 
-                <hr style={{borderColor: '#374151', margin: '10px 0'}} />
+                <hr style={{borderColor: '#374151', margin: '15px 0'}} />
+
+                {/* NEW: Blend Mode Dropdown */}
+                <div className="control-group">
+                    <label style={{marginBottom: '6px', display: 'block'}}>Blend Mode</label>
+                    <select 
+                        value={selectedImage.blendMode || 'source-over'} 
+                        onChange={(e) => updateImage(selectedId, { ...selectedImage, blendMode: e.target.value })}
+                        style={{
+                            width: '100%', padding: '8px', background: '#111827', color: 'white', 
+                            border: '1px solid #4b5563', borderRadius: '4px', outline: 'none'
+                        }}
+                    >
+                        <option value="source-over">Normal</option>
+                        <option value="multiply">Multiply</option>
+                        <option value="screen">Screen</option>
+                        <option value="overlay">Overlay</option>
+                        <option value="darken">Darken</option>
+                        <option value="lighten">Lighten</option>
+                        <option value="color-dodge">Color Dodge</option>
+                        <option value="color-burn">Color Burn</option>
+                        <option value="hard-light">Hard Light</option>
+                        <option value="difference">Difference</option>
+                    </select>
+                </div>
+
+                {/* NEW: Opacity Slider */}
+                <div className="control-group">
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                        <label>Opacity</label>
+                        <span style={{fontSize: '0.8rem', color: '#9ca3af'}}>{selectedImage.opacity ?? 100}%</span>
+                    </div>
+                    <input type="range" min="0" max="100" value={selectedImage.opacity ?? 100} onChange={(e) => updateImage(selectedId, { ...selectedImage, opacity: Number(e.target.value) })} />
+                </div>
+
+                <hr style={{borderColor: '#374151', margin: '15px 0'}} />
 
                 <div className="control-group">
                     <label>
