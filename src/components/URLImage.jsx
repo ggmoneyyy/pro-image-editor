@@ -11,14 +11,16 @@ const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canva
   const isVisible = shapeProps.visible !== false;
 
   useEffect(() => {
+    if (isSelected && isVisible && trRef.current) {
+      trRef.current.nodes([shapeRef.current]);
+      trRef.current.getLayer().batchDraw();
+    }
+  }, [isSelected, isVisible, shapeProps]); 
+
+  useEffect(() => {
     if (image && shapeRef.current) {
       if (shapeProps.blur > 0) {
-        shapeRef.current.cache({
-          // Force standard resolution to prevent browser memory limits from crashing the canvas
-          pixelRatio: 1, 
-          // Dynamically expand the invisible boundary so the blur doesn't get cut off
-          offset: shapeProps.blur 
-        });
+        shapeRef.current.cache();
       } else {
         shapeRef.current.clearCache();
       }
