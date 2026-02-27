@@ -429,7 +429,7 @@ function App() {
 
                 <div className="control-group">
                     <label>Blur: {selectedImage.blur}px</label>
-                    <input type="range" min="0" max="400" value={selectedImage.blur} onChange={(e) => updateImage(selectedId, { ...selectedImage, blur: Number(e.target.value) })} />
+                    <input type="range" min="0" max="180" value={selectedImage.blur} onChange={(e) => updateImage(selectedId, { ...selectedImage, blur: Number(e.target.value) })} />
                 </div>
             </div>
         )}
