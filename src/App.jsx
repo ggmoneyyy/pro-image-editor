@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Stage, Layer, Rect } from 'react-konva'; // Added Rect for background
+import { Stage, Layer, Rect } from 'react-konva';
 import { 
   ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette
 } from 'lucide-react';
@@ -11,8 +11,9 @@ function App() {
   const [canvasConfig, setCanvasConfig] = useState(null);
   const [filenamePrefix, setFilenamePrefix] = useState('');
   
-  // NEW: Background Color State
-  const [bgColor, setBgColor] = useState('transparent');
+  // FIXED: Separated toggle state and memory state
+  const [bgEnabled, setBgEnabled] = useState(false);
+  const [bgColor, setBgColor] = useState('#000000');
 
   const [history, setHistory] = useState([[]]); 
   const [historyStep, setHistoryStep] = useState(0); 
@@ -58,7 +59,8 @@ function App() {
       setHistoryStep(0);
       selectShape(null);
       setFilenamePrefix(''); 
-      setBgColor('transparent'); // Reset background
+      setBgEnabled(false);
+      setBgColor('#000000'); 
   };
 
   const commitHistory = (newImages) => {
@@ -102,7 +104,6 @@ function App() {
           blur: 0,
           shadow: false,
           visible: true,
-          // NEW: Default properties
           opacity: 100,
           blendMode: 'source-over'
         };
@@ -191,8 +192,8 @@ function App() {
             tempCanvas.height = canvas.height;
             const ctx = tempCanvas.getContext('2d');
             
-            // Apply background color to JPEG export
-            ctx.fillStyle = bgColor === 'transparent' ? '#ffffff' : bgColor;
+            // Apply background color to JPEG export if enabled
+            ctx.fillStyle = bgEnabled ? bgColor : '#ffffff';
             ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             ctx.drawImage(canvas, 0, 0);
             
@@ -344,7 +345,6 @@ function App() {
             </div>
         </div>
 
-        {/* NEW: Canvas & Export Settings */}
         <div className="export-panel">
             <div className="panel-header" style={{marginBottom: '10px'}}><Palette size={16} style={{display: 'inline', verticalAlign: 'text-bottom', marginRight: '4px'}}/> Canvas & Export</div>
             
@@ -353,16 +353,16 @@ function App() {
                 <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
                     <input 
                         type="color" 
-                        value={bgColor === 'transparent' ? '#ffffff' : bgColor} 
+                        value={bgColor} 
                         onChange={(e) => setBgColor(e.target.value)}
-                        disabled={bgColor === 'transparent'}
-                        style={{cursor: bgColor === 'transparent' ? 'not-allowed' : 'pointer'}}
+                        disabled={!bgEnabled}
+                        style={{cursor: !bgEnabled ? 'not-allowed' : 'pointer'}}
                     />
                     <label style={{fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'}}>
                         <input 
                             type="checkbox" 
-                            checked={bgColor !== 'transparent'} 
-                            onChange={(e) => setBgColor(e.target.checked ? '#000000' : 'transparent')} 
+                            checked={bgEnabled} 
+                            onChange={(e) => setBgEnabled(e.target.checked)} 
                         />
                         Solid Color
                     </label>
@@ -393,14 +393,14 @@ function App() {
         <div className="canvas-container" style={{ width: canvasConfig.width, height: canvasConfig.height, transform: `scale(${scale})` }}>
             <Stage width={canvasConfig.width} height={canvasConfig.height} onMouseDown={checkDeselect} onTouchStart={checkDeselect} ref={stageRef}>
                 <Layer>
-                    {/* NEW: Solid Background Renderer */}
-                    {bgColor !== 'transparent' && (
+                    {/* FIXED: Toggle based on bgEnabled state */}
+                    {bgEnabled && (
                         <Rect 
                             name="canvas-background"
                             x={0} y={0} 
                             width={canvasConfig.width} height={canvasConfig.height} 
                             fill={bgColor} 
-                            listening={true} // Allows clicking the bg to deselect images
+                            listening={true} 
                         />
                     )}
 
@@ -451,7 +451,6 @@ function App() {
 
                 <hr style={{borderColor: '#374151', margin: '15px 0'}} />
 
-                {/* NEW: Blend Mode Dropdown */}
                 <div className="control-group">
                     <label style={{marginBottom: '6px', display: 'block'}}>Blend Mode</label>
                     <select 
@@ -475,7 +474,6 @@ function App() {
                     </select>
                 </div>
 
-                {/* NEW: Opacity Slider */}
                 <div className="control-group">
                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                         <label>Opacity</label>
