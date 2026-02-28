@@ -3,7 +3,8 @@ import { Image as KonvaImage, Transformer } from 'react-konva';
 import useImage from 'use-image';
 import Konva from 'konva';
 
-const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canvasWidth, canvasHeight }) => {
+// NEW: Added isDraggable to the incoming properties
+const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canvasWidth, canvasHeight, isDraggable }) => {
   const [image] = useImage(shapeProps.src, 'anonymous');
   const shapeRef = useRef();
   const trRef = useRef();
@@ -48,20 +49,6 @@ const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canva
     node.y(newY);
   };
 
-  // Calculate crop rectangle if cropping is active
-  let cropConfig = undefined;
-  if (image && (shapeProps.cropLeft || shapeProps.cropRight || shapeProps.cropTop || shapeProps.cropBottom)) {
-      const natW = image.width;
-      const natH = image.height;
-      
-      const x = (natW * (shapeProps.cropLeft || 0)) / 100;
-      const y = (natH * (shapeProps.cropTop || 0)) / 100;
-      const width = natW - x - ((natW * (shapeProps.cropRight || 0)) / 100);
-      const height = natH - y - ((natH * (shapeProps.cropBottom || 0)) / 100);
-      
-      cropConfig = { x, y, width, height };
-  }
-
   return (
     <React.Fragment>
       <KonvaImage
@@ -71,14 +58,11 @@ const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canva
         image={image}
         {...shapeProps}
         visible={isVisible}
-        draggable
-        // NEW: Opacity and Blending Modes
+        // FIXED: Now respects the tool state
+        draggable={isDraggable !== false}
         opacity={shapeProps.opacity !== undefined ? shapeProps.opacity / 100 : 1}
         globalCompositeOperation={shapeProps.blendMode || 'source-over'}
-        // NEW: Cropping and Masking
-        crop={cropConfig}
         cornerRadius={shapeProps.cornerRadius || 0}
-        // Filters
         filters={shapeProps.blur > 0 ? [Konva.Filters.Blur] : []}
         blurRadius={shapeProps.blur || 0}
         shadowColor="rgba(0,0,0,0.6)"
