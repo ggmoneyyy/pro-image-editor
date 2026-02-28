@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Rect, Group } from 'react-konva'; 
 import { 
   ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette, Crop,
-  MousePointer2, SquareDashed, Link, Unlink
+  MousePointer2, SquareDashed, Link, Unlink, Trash2 // NEW: Trash icon
 } from 'lucide-react';
 import SetupScreen from './components/SetupScreen';
 import URLImage from './components/URLImage';
@@ -21,8 +21,7 @@ function App() {
   const images = history[historyStep] || []; 
 
   const [selectedId, setSelectedId] = useState(null);
-  // NEW: Tracks whether you are currently manipulating the image or the mask
-  const [activeTarget, setActiveTarget] = useState('image'); // 'image' or 'mask'
+  const [activeTarget, setActiveTarget] = useState('image'); 
   const [scale, setScale] = useState(0.5); 
   const [keepRatio, setKeepRatio] = useState(true); 
 
@@ -30,13 +29,15 @@ function App() {
   const [isDrawingSelection, setIsDrawingSelection] = useState(false);
   const [selectionRect, setSelectionRect] = useState(null); 
 
+  // NEW: Context Menu State
+  const [maskContextMenu, setMaskContextMenu] = useState({ visible: false, x: 0, y: 0, layerId: null });
+
   const [draggedLayer, setDraggedLayer] = useState(null);
   const [dragOverLayer, setDragOverLayer] = useState(null);
   
   const stageRef = useRef(null);
   const containerRef = useRef(null);
 
-  // Helper to change selection cleanly
   const handleSelectShape = (id, target = 'image') => {
       setSelectedId(id);
       setActiveTarget(target);
@@ -56,6 +57,17 @@ function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [canvasConfig]); 
+
+  // NEW: Global click listener to close the context menu if you click away
+  useEffect(() => {
+      const handleClickOutside = () => {
+          if (maskContextMenu.visible) {
+              setMaskContextMenu({ visible: false, x: 0, y: 0, layerId: null });
+          }
+      };
+      window.addEventListener('click', handleClickOutside);
+      return () => window.removeEventListener('click', handleClickOutside);
+  }, [maskContextMenu.visible]);
 
   if (!canvasConfig) {
       return <SetupScreen onComplete={setCanvasConfig} />;
@@ -135,8 +147,34 @@ function App() {
     
     setSelectionRect(null);
     setActiveTool('cursor');
-    // Automatically select the mask so the user can immediately edit it if they unlinked it
     handleSelectShape(selectedId, 'mask'); 
+  };
+
+  // NEW: Right Click & Delete Logic
+  const handleRightClickMask = (e, id) => {
+      e.preventDefault(); // Stop standard browser menu
+      setMaskContextMenu({
+          visible: true,
+          x: e.pageX,
+          y: e.pageY,
+          layerId: id
+      });
+  };
+
+  const handleDeleteMask = () => {
+      if (!maskContextMenu.layerId) return;
+      const imgToUpdate = images.find(img => img.id === maskContextMenu.layerId);
+      
+      if (imgToUpdate) {
+          // Destructure to remove the mask property entirely
+          const { mask, ...imgWithoutMask } = imgToUpdate;
+          updateImage(maskContextMenu.layerId, imgWithoutMask);
+          
+          if (selectedId === maskContextMenu.layerId && activeTarget === 'mask') {
+              handleSelectShape(maskContextMenu.layerId, 'image'); // Fallback to image targeting
+          }
+      }
+      setMaskContextMenu({ visible: false, x: 0, y: 0, layerId: null });
   };
 
   const handleImageUpload = (e) => {
@@ -361,6 +399,36 @@ function App() {
   return (
     <div className="app-layout">
       
+      {/* NEW: Absolute positioned Context Menu */}
+      {maskContextMenu.visible && (
+          <div style={{
+              position: 'absolute',
+              top: maskContextMenu.y,
+              left: maskContextMenu.x,
+              background: '#1f2937',
+              border: '1px solid #374151',
+              borderRadius: '6px',
+              padding: '4px',
+              zIndex: 1000,
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+          }}>
+              <button
+                  onClick={handleDeleteMask}
+                  style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      width: '100%', padding: '8px 16px',
+                      background: 'transparent', border: 'none',
+                      color: '#ef4444', fontSize: '0.85rem', cursor: 'pointer',
+                      textAlign: 'left', borderRadius: '4px', fontWeight: '500'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                  <Trash2 size={16} /> Delete Layer Mask
+              </button>
+          </div>
+      )}
+
       <aside className="sidebar">
         <div className="brand" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '30px'}}>
             <div>
@@ -453,7 +521,6 @@ function App() {
                         }}
                         className={`layer-item ${selectedId === img.id ? 'active' : ''} ${dragOverLayer === img.id ? 'drag-over' : ''}`}
                     >
-                        {/* LEFT: Image Select Area */}
                         <div 
                             className="layer-item-left" 
                             onClick={() => {
@@ -466,7 +533,6 @@ function App() {
                             <span className={!isVisible ? 'dimmed-text' : ''}>{img.name}</span>
                         </div>
 
-                        {/* RIGHT: Actions & Mask Targeting */}
                         <div className="layer-item-actions">
                             {img.mask && (
                                 <div style={{display: 'flex', alignItems: 'center', gap: '4px', marginRight: '6px', paddingRight: '6px', borderRight: '1px solid #4b5563'}}>
@@ -482,7 +548,6 @@ function App() {
                                         {img.mask.linked ? <Link size={14} /> : <Unlink size={14} />}
                                     </button>
                                     
-                                    {/* Photoshop Style Mask Selector & Toggle */}
                                     <div 
                                         className="layer-action-btn"
                                         onClick={(e) => {
@@ -494,7 +559,9 @@ function App() {
                                                 setActiveTool('cursor');
                                             }
                                         }}
-                                        title="Shift+Click to Disable/Enable. Click to select mask."
+                                        // UPDATED: Added onContextMenu hook right here!
+                                        onContextMenu={(e) => handleRightClickMask(e, img.id)}
+                                        title="Shift+Click to Disable/Enable. Right-Click to delete."
                                         style={{
                                             position: 'relative',
                                             cursor: 'pointer',
@@ -605,7 +672,6 @@ function App() {
                             <URLImage
                                 key={img.id}
                                 shapeProps={hasMask ? { ...img, shadow: false } : img}
-                                // Prevent dragging the image if the user is targeting the mask
                                 isDraggable={activeTool === 'cursor' && isImageTargeted}
                                 isSelected={isImageTargeted && activeTool === 'cursor'}
                                 onSelect={() => {
@@ -635,7 +701,6 @@ function App() {
                                         {imageNode}
                                     </Group>
 
-                                    {/* MASK DRAG HANDLER: Only active when Mask is the Target and Unlinked */}
                                     {img.id === selectedId && activeTool === 'cursor' && (
                                         <Rect
                                             x={img.mask.x}
@@ -656,7 +721,6 @@ function App() {
                                                 e.target.getStage().container().style.cursor = 'default';
                                             }}
                                             onDragMove={(e) => {
-                                                // Real-time clip update without spamming history
                                                 const group = e.target.getLayer().findOne(`#mask-group-${img.id}`);
                                                 if (group) {
                                                     group.clipX(e.target.x());
@@ -728,7 +792,6 @@ function App() {
                     </div>
                 </div>
 
-                {/* Only show image scaling sliders if the mask isn't the active target */}
                 {activeTarget === 'image' && (
                     <div className="control-group">
                         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
