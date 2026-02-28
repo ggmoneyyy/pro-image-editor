@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Rect } from 'react-konva';
 import { 
-  ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette, Crop
+  ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette, Crop,
+  MousePointer2, SquareDashed // NEW ICONS
 } from 'lucide-react';
 import SetupScreen from './components/SetupScreen';
 import URLImage from './components/URLImage';
@@ -22,6 +23,11 @@ function App() {
   const [selectedId, selectShape] = useState(null);
   const [scale, setScale] = useState(0.5); 
   const [keepRatio, setKeepRatio] = useState(true); 
+
+  // NEW: Tool and Selection State
+  const [activeTool, setActiveTool] = useState('cursor'); // 'cursor' or 'marquee'
+  const [isDrawingSelection, setIsDrawingSelection] = useState(false);
+  const [selectionRect, setSelectionRect] = useState(null); // {x, y, width, height}
 
   const [draggedLayer, setDraggedLayer] = useState(null);
   const [dragOverLayer, setDragOverLayer] = useState(null);
@@ -60,6 +66,8 @@ function App() {
       setFilenamePrefix(''); 
       setBgEnabled(false);
       setBgColor('#000000'); 
+      setActiveTool('cursor');
+      setSelectionRect(null);
   };
 
   const commitHistory = (newImages) => {
@@ -72,9 +80,46 @@ function App() {
   const handleUndo = () => { if (historyStep > 0) setHistoryStep(historyStep - 1); };
   const handleRedo = () => { if (historyStep < history.length - 1) setHistoryStep(historyStep + 1); };
 
-  const checkDeselect = (e) => {
-    const clickedOnEmpty = e.target === e.target.getStage() || e.target.name() === 'canvas-background';
-    if (clickedOnEmpty) selectShape(null);
+  // UPDATED: Stage Mouse Handlers for Drawing Selections
+  const handleStageMouseDown = (e) => {
+    if (activeTool === 'cursor') {
+        const clickedOnEmpty = e.target === e.target.getStage() || e.target.name() === 'canvas-background';
+        if (clickedOnEmpty) selectShape(null);
+    } else if (activeTool === 'marquee') {
+        setIsDrawingSelection(true);
+        selectShape(null); // Deselect images while drawing
+        
+        // Get raw pointer position, adjust for CSS scaling
+        const pos = e.target.getStage().getPointerPosition();
+        const stageX = pos.x / scale;
+        const stageY = pos.y / scale;
+        
+        setSelectionRect({ x: stageX, y: stageY, width: 0, height: 0 });
+    }
+  };
+
+  const handleStageMouseMove = (e) => {
+    if (!isDrawingSelection || activeTool !== 'marquee') return;
+    
+    const pos = e.target.getStage().getPointerPosition();
+    const stageX = pos.x / scale;
+    const stageY = pos.y / scale;
+
+    setSelectionRect((prev) => ({
+        ...prev,
+        width: stageX - prev.x,
+        height: stageY - prev.y
+    }));
+  };
+
+  const handleStageMouseUp = () => {
+    if (isDrawingSelection) {
+        setIsDrawingSelection(false);
+        // If they just clicked without dragging, clear the selection
+        if (selectionRect && Math.abs(selectionRect.width) < 5 && Math.abs(selectionRect.height) < 5) {
+            setSelectionRect(null);
+        }
+    }
   };
 
   const handleImageUpload = (e) => {
@@ -109,6 +154,7 @@ function App() {
         };
         commitHistory([...images, newImage]);
         selectShape(newImage.id); 
+        setActiveTool('cursor'); // Auto-switch back to cursor so they can move the new image
       };
     };
     reader.readAsDataURL(file);
@@ -169,6 +215,7 @@ function App() {
 
   const exportCanvas = (format) => {
     selectShape(null); 
+    setSelectionRect(null); // Hide selection before exporting
     
     setTimeout(() => {
         const stage = stageRef.current;
@@ -270,7 +317,6 @@ function App() {
                     {canvasConfig.name} ({canvasConfig.width}x{canvasConfig.height})
                 </div>
             </div>
-            
             <button 
                 onClick={handleCloseProject} 
                 className="layer-action-btn" 
@@ -282,6 +328,35 @@ function App() {
                 }}
             >
                 <X size={16} /> Close
+            </button>
+        </div>
+
+        {/* NEW: Toolbar */}
+        <div style={{marginBottom: '20px', display: 'flex', gap: '8px', background: '#111827', padding: '6px', borderRadius: '8px', border: '1px solid #374151'}}>
+            <button 
+                onClick={() => setActiveTool('cursor')}
+                style={{
+                    flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                    background: activeTool === 'cursor' ? '#3b82f6' : 'transparent',
+                    color: activeTool === 'cursor' ? '#fff' : '#9ca3af',
+                }}
+                title="Cursor (Move & Scale)"
+            >
+                <MousePointer2 size={18} />
+            </button>
+            <button 
+                onClick={() => {
+                    setActiveTool('marquee');
+                    selectShape(null); // Deselect layers when switching to marquee
+                }}
+                style={{
+                    flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                    background: activeTool === 'marquee' ? '#3b82f6' : 'transparent',
+                    color: activeTool === 'marquee' ? '#fff' : '#9ca3af',
+                }}
+                title="Marquee Selection Tool"
+            >
+                <SquareDashed size={18} />
             </button>
         </div>
         
@@ -325,7 +400,10 @@ function App() {
                            document.querySelectorAll('.layer-item').forEach(el => el.classList.remove('is-dragging'));
                         }}
                         className={`layer-item ${selectedId === img.id ? 'active' : ''} ${dragOverLayer === img.id ? 'drag-over' : ''}`}
-                        onClick={() => selectShape(img.id)}
+                        onClick={() => {
+                            selectShape(img.id);
+                            setActiveTool('cursor'); // Auto-switch to cursor if they click a layer
+                        }}
                     >
                         <div className="layer-item-left">
                             <GripVertical size={14} className="drag-handle" />
@@ -389,8 +467,21 @@ function App() {
       </aside>
 
       <main className="workspace" ref={containerRef}>
-        <div className="canvas-container" style={{ width: canvasConfig.width, height: canvasConfig.height, transform: `scale(${scale})` }}>
-            <Stage width={canvasConfig.width} height={canvasConfig.height} onMouseDown={checkDeselect} onTouchStart={checkDeselect} ref={stageRef}>
+        <div 
+            className={`canvas-container ${activeTool === 'marquee' ? 'crosshair-cursor' : ''}`} 
+            style={{ width: canvasConfig.width, height: canvasConfig.height, transform: `scale(${scale})` }}
+        >
+            <Stage 
+                width={canvasConfig.width} 
+                height={canvasConfig.height} 
+                onMouseDown={handleStageMouseDown} 
+                onMouseMove={handleStageMouseMove}
+                onMouseUp={handleStageMouseUp}
+                onTouchStart={handleStageMouseDown} 
+                onTouchMove={handleStageMouseMove}
+                onTouchEnd={handleStageMouseUp}
+                ref={stageRef}
+            >
                 <Layer>
                     {bgEnabled && (
                         <Rect 
@@ -406,14 +497,31 @@ function App() {
                         <URLImage
                             key={img.id}
                             shapeProps={img}
-                            isSelected={img.id === selectedId}
-                            onSelect={() => selectShape(img.id)}
+                            isSelected={img.id === selectedId && activeTool === 'cursor'} // Hide transform box when drawing
+                            onSelect={() => {
+                                if (activeTool === 'cursor') selectShape(img.id);
+                            }}
                             onChange={(newAttrs) => updateImage(img.id, newAttrs)}
                             keepRatio={keepRatio}
                             canvasWidth={canvasConfig.width}
                             canvasHeight={canvasConfig.height}
                         />
                     ))}
+
+                    {/* NEW: The Marquee Selection Box Renderer */}
+                    {selectionRect && (
+                        <Rect
+                            x={selectionRect.width < 0 ? selectionRect.x + selectionRect.width : selectionRect.x}
+                            y={selectionRect.height < 0 ? selectionRect.y + selectionRect.height : selectionRect.y}
+                            width={Math.abs(selectionRect.width)}
+                            height={Math.abs(selectionRect.height)}
+                            fill="rgba(59, 130, 246, 0.2)"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dash={[6, 6]}
+                            listening={false} // Prevents the selection box from blocking mouse events
+                        />
+                    )}
                 </Layer>
             </Stage>
         </div>
