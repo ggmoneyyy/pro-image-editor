@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Rect, Group } from 'react-konva'; 
 import { 
   ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette, Crop,
-  MousePointer2, SquareDashed, Link, Unlink, Trash2 // NEW: Trash icon
+  MousePointer2, SquareDashed, Link, Unlink, Trash2 
 } from 'lucide-react';
 import SetupScreen from './components/SetupScreen';
 import URLImage from './components/URLImage';
@@ -29,7 +29,6 @@ function App() {
   const [isDrawingSelection, setIsDrawingSelection] = useState(false);
   const [selectionRect, setSelectionRect] = useState(null); 
 
-  // NEW: Context Menu State
   const [maskContextMenu, setMaskContextMenu] = useState({ visible: false, x: 0, y: 0, layerId: null });
 
   const [draggedLayer, setDraggedLayer] = useState(null);
@@ -58,7 +57,6 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, [canvasConfig]); 
 
-  // NEW: Global click listener to close the context menu if you click away
   useEffect(() => {
       const handleClickOutside = () => {
           if (maskContextMenu.visible) {
@@ -150,9 +148,8 @@ function App() {
     handleSelectShape(selectedId, 'mask'); 
   };
 
-  // NEW: Right Click & Delete Logic
   const handleRightClickMask = (e, id) => {
-      e.preventDefault(); // Stop standard browser menu
+      e.preventDefault(); 
       setMaskContextMenu({
           visible: true,
           x: e.pageX,
@@ -166,12 +163,11 @@ function App() {
       const imgToUpdate = images.find(img => img.id === maskContextMenu.layerId);
       
       if (imgToUpdate) {
-          // Destructure to remove the mask property entirely
           const { mask, ...imgWithoutMask } = imgToUpdate;
           updateImage(maskContextMenu.layerId, imgWithoutMask);
           
           if (selectedId === maskContextMenu.layerId && activeTarget === 'mask') {
-              handleSelectShape(maskContextMenu.layerId, 'image'); // Fallback to image targeting
+              handleSelectShape(maskContextMenu.layerId, 'image'); 
           }
       }
       setMaskContextMenu({ visible: false, x: 0, y: 0, layerId: null });
@@ -399,7 +395,6 @@ function App() {
   return (
     <div className="app-layout">
       
-      {/* NEW: Absolute positioned Context Menu */}
       {maskContextMenu.visible && (
           <div style={{
               position: 'absolute',
@@ -559,7 +554,6 @@ function App() {
                                                 setActiveTool('cursor');
                                             }
                                         }}
-                                        // UPDATED: Added onContextMenu hook right here!
                                         onContextMenu={(e) => handleRightClickMask(e, img.id)}
                                         title="Shift+Click to Disable/Enable. Right-Click to delete."
                                         style={{
@@ -687,16 +681,31 @@ function App() {
                         if (hasMask) {
                             return (
                                 <React.Fragment key={`mask-fragment-${img.id}`}>
+                                    
+                                    {/* NEW: The Shadow Plate */}
+                                    {img.shadow && (
+                                        <Rect
+                                            x={img.mask.x}
+                                            y={img.mask.y}
+                                            width={img.mask.width}
+                                            height={img.mask.height}
+                                            fill="#ffffff"
+                                            opacity={img.opacity !== undefined ? img.opacity / 100 : 1}
+                                            shadowColor="rgba(0,0,0,0.6)"
+                                            shadowBlur={30}
+                                            shadowOffsetY={15}
+                                            shadowOpacity={1}
+                                            listening={false} 
+                                            cornerRadius={img.cornerRadius || 0} 
+                                        />
+                                    )}
+
                                     <Group  
                                         id={`mask-group-${img.id}`}
                                         clipX={img.mask.x} 
                                         clipY={img.mask.y} 
                                         clipWidth={img.mask.width} 
                                         clipHeight={img.mask.height}
-                                        shadowColor="rgba(0,0,0,0.6)"
-                                        shadowBlur={img.shadow ? 30 : 0}
-                                        shadowOffsetY={img.shadow ? 15 : 0}
-                                        shadowOpacity={img.shadow ? 1 : 0}
                                     >
                                         {imageNode}
                                     </Group>
