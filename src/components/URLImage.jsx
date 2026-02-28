@@ -46,16 +46,6 @@ const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canva
 
     node.x(newX);
     node.y(newY);
-
-    // NEW: Smoothly move the mask boundary in real-time during drag
-    if (shapeProps.mask && shapeProps.mask.linked && shapeProps.mask.enabled) {
-        const deltaX = newX - shapeProps.x;
-        const deltaY = newY - shapeProps.y;
-        if (node.parent && typeof node.parent.clipX === 'function') {
-            node.parent.clipX(shapeProps.mask.x + deltaX);
-            node.parent.clipY(shapeProps.mask.y + deltaY);
-        }
-    }
   };
 
   return (
@@ -70,7 +60,6 @@ const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canva
         draggable={isDraggable !== false}
         opacity={shapeProps.opacity !== undefined ? shapeProps.opacity / 100 : 1}
         globalCompositeOperation={shapeProps.blendMode || 'source-over'}
-        cornerRadius={shapeProps.cornerRadius || 0}
         filters={shapeProps.blur > 0 ? [Konva.Filters.Blur] : []}
         blurRadius={shapeProps.blur || 0}
         shadowColor="rgba(0,0,0,0.6)"
@@ -78,28 +67,13 @@ const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canva
         shadowOffsetY={shapeProps.shadow ? 15 : 0}
         shadowOpacity={shapeProps.shadow ? 1 : 0}
         onDragMove={handleDragMove}
-        
-        // UPDATED: Save the updated linked mask coordinates when you drop the image
         onDragEnd={(e) => {
-          const newX = e.target.x();
-          const newY = e.target.y();
-          const deltaX = newX - shapeProps.x;
-          const deltaY = newY - shapeProps.y;
-
-          let newMask = shapeProps.mask;
-          if (newMask && newMask.linked) {
-              newMask = { ...newMask, x: newMask.x + deltaX, y: newMask.y + deltaY };
-          }
-
           onChange({
             ...shapeProps,
-            x: newX,
-            y: newY,
-            mask: newMask
+            x: e.target.x(),
+            y: e.target.y(),
           });
         }}
-        
-        // UPDATED: Scale the mask perfectly if the image is resized
         onTransformEnd={(e) => {
           const node = shapeRef.current;
           const scaleX = node.scaleX();
@@ -107,33 +81,13 @@ const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canva
 
           node.scaleX(1);
           node.scaleY(1);
-
-          const newX = node.x();
-          const newY = node.y();
-          const newWidth = Math.max(5, node.width() * scaleX);
-          const newHeight = Math.max(5, node.height() * scaleY);
-
-          let newMask = shapeProps.mask;
-          if (newMask && newMask.linked) {
-              const offsetX = newMask.x - shapeProps.x;
-              const offsetY = newMask.y - shapeProps.y;
-              newMask = {
-                  ...newMask,
-                  x: newX + (offsetX * scaleX),
-                  y: newY + (offsetY * scaleY),
-                  width: newMask.width * scaleX,
-                  height: newMask.height * scaleY
-              };
-          }
-
           onChange({
             ...shapeProps,
-            x: newX,
-            y: newY,
+            x: node.x(),
+            y: node.y(),
             rotation: node.rotation(),
-            width: newWidth,
-            height: newHeight,
-            mask: newMask
+            width: Math.max(5, node.width() * scaleX),
+            height: Math.max(5, node.height() * scaleY),
           });
         }}
       />
