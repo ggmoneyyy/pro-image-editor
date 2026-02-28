@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Rect } from 'react-konva';
 import { 
   ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette, Crop,
-  MousePointer2, SquareDashed // NEW ICONS
+  MousePointer2, SquareDashed 
 } from 'lucide-react';
 import SetupScreen from './components/SetupScreen';
 import URLImage from './components/URLImage';
@@ -24,10 +24,9 @@ function App() {
   const [scale, setScale] = useState(0.5); 
   const [keepRatio, setKeepRatio] = useState(true); 
 
-  // NEW: Tool and Selection State
-  const [activeTool, setActiveTool] = useState('cursor'); // 'cursor' or 'marquee'
+  const [activeTool, setActiveTool] = useState('cursor'); 
   const [isDrawingSelection, setIsDrawingSelection] = useState(false);
-  const [selectionRect, setSelectionRect] = useState(null); // {x, y, width, height}
+  const [selectionRect, setSelectionRect] = useState(null); 
 
   const [draggedLayer, setDraggedLayer] = useState(null);
   const [dragOverLayer, setDragOverLayer] = useState(null);
@@ -80,21 +79,17 @@ function App() {
   const handleUndo = () => { if (historyStep > 0) setHistoryStep(historyStep - 1); };
   const handleRedo = () => { if (historyStep < history.length - 1) setHistoryStep(historyStep + 1); };
 
-  // UPDATED: Stage Mouse Handlers for Drawing Selections
+  // FIXED: Drawing logic now trusts Konva's internal unscaled coordinates
   const handleStageMouseDown = (e) => {
     if (activeTool === 'cursor') {
         const clickedOnEmpty = e.target === e.target.getStage() || e.target.name() === 'canvas-background';
         if (clickedOnEmpty) selectShape(null);
     } else if (activeTool === 'marquee') {
         setIsDrawingSelection(true);
-        selectShape(null); // Deselect images while drawing
+        selectShape(null); 
         
-        // Get raw pointer position, adjust for CSS scaling
         const pos = e.target.getStage().getPointerPosition();
-        const stageX = pos.x / scale;
-        const stageY = pos.y / scale;
-        
-        setSelectionRect({ x: stageX, y: stageY, width: 0, height: 0 });
+        setSelectionRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
     }
   };
 
@@ -102,20 +97,17 @@ function App() {
     if (!isDrawingSelection || activeTool !== 'marquee') return;
     
     const pos = e.target.getStage().getPointerPosition();
-    const stageX = pos.x / scale;
-    const stageY = pos.y / scale;
 
     setSelectionRect((prev) => ({
         ...prev,
-        width: stageX - prev.x,
-        height: stageY - prev.y
+        width: pos.x - prev.x,
+        height: pos.y - prev.y
     }));
   };
 
   const handleStageMouseUp = () => {
     if (isDrawingSelection) {
         setIsDrawingSelection(false);
-        // If they just clicked without dragging, clear the selection
         if (selectionRect && Math.abs(selectionRect.width) < 5 && Math.abs(selectionRect.height) < 5) {
             setSelectionRect(null);
         }
@@ -154,7 +146,7 @@ function App() {
         };
         commitHistory([...images, newImage]);
         selectShape(newImage.id); 
-        setActiveTool('cursor'); // Auto-switch back to cursor so they can move the new image
+        setActiveTool('cursor'); 
       };
     };
     reader.readAsDataURL(file);
@@ -215,7 +207,7 @@ function App() {
 
   const exportCanvas = (format) => {
     selectShape(null); 
-    setSelectionRect(null); // Hide selection before exporting
+    setSelectionRect(null); 
     
     setTimeout(() => {
         const stage = stageRef.current;
@@ -331,7 +323,6 @@ function App() {
             </button>
         </div>
 
-        {/* NEW: Toolbar */}
         <div style={{marginBottom: '20px', display: 'flex', gap: '8px', background: '#111827', padding: '6px', borderRadius: '8px', border: '1px solid #374151'}}>
             <button 
                 onClick={() => setActiveTool('cursor')}
@@ -347,7 +338,7 @@ function App() {
             <button 
                 onClick={() => {
                     setActiveTool('marquee');
-                    selectShape(null); // Deselect layers when switching to marquee
+                    selectShape(null); 
                 }}
                 style={{
                     flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
@@ -402,7 +393,7 @@ function App() {
                         className={`layer-item ${selectedId === img.id ? 'active' : ''} ${dragOverLayer === img.id ? 'drag-over' : ''}`}
                         onClick={() => {
                             selectShape(img.id);
-                            setActiveTool('cursor'); // Auto-switch to cursor if they click a layer
+                            setActiveTool('cursor'); 
                         }}
                     >
                         <div className="layer-item-left">
@@ -497,7 +488,9 @@ function App() {
                         <URLImage
                             key={img.id}
                             shapeProps={img}
-                            isSelected={img.id === selectedId && activeTool === 'cursor'} // Hide transform box when drawing
+                            // FIXED: Added isDraggable mapping
+                            isDraggable={activeTool === 'cursor'}
+                            isSelected={img.id === selectedId && activeTool === 'cursor'}
                             onSelect={() => {
                                 if (activeTool === 'cursor') selectShape(img.id);
                             }}
@@ -508,7 +501,6 @@ function App() {
                         />
                     ))}
 
-                    {/* NEW: The Marquee Selection Box Renderer */}
                     {selectionRect && (
                         <Rect
                             x={selectionRect.width < 0 ? selectionRect.x + selectionRect.width : selectionRect.x}
@@ -519,7 +511,7 @@ function App() {
                             stroke="#3b82f6"
                             strokeWidth={2}
                             dash={[6, 6]}
-                            listening={false} // Prevents the selection box from blocking mouse events
+                            listening={false} 
                         />
                     )}
                 </Layer>
