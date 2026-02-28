@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Stage, Layer, Rect, Group } from 'react-konva'; 
+import { Stage, Layer, Rect } from 'react-konva'; 
 import { 
-  ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette, Crop,
-  MousePointer2, SquareDashed, Link, Unlink, Trash2 
+  ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette,
+  MousePointer2, SquareDashed, Trash2, Scissors
 } from 'lucide-react';
 import SetupScreen from './components/SetupScreen';
 import URLImage from './components/URLImage';
@@ -20,8 +20,7 @@ function App() {
   
   const images = history[historyStep] || []; 
 
-  const [selectedId, setSelectedId] = useState(null);
-  const [activeTarget, setActiveTarget] = useState('image'); 
+  const [selectedId, selectShape] = useState(null);
   const [scale, setScale] = useState(0.5); 
   const [keepRatio, setKeepRatio] = useState(true); 
 
@@ -29,18 +28,14 @@ function App() {
   const [isDrawingSelection, setIsDrawingSelection] = useState(false);
   const [selectionRect, setSelectionRect] = useState(null); 
 
-  const [maskContextMenu, setMaskContextMenu] = useState({ visible: false, x: 0, y: 0, layerId: null });
+  // NEW: Canvas Right-Click Menu
+  const [canvasContextMenu, setCanvasContextMenu] = useState({ visible: false, x: 0, y: 0 });
 
   const [draggedLayer, setDraggedLayer] = useState(null);
   const [dragOverLayer, setDragOverLayer] = useState(null);
   
   const stageRef = useRef(null);
   const containerRef = useRef(null);
-
-  const handleSelectShape = (id, target = 'image') => {
-      setSelectedId(id);
-      setActiveTarget(target);
-  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -57,15 +52,16 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, [canvasConfig]); 
 
+  // Auto-hide context menu on regular clicks
   useEffect(() => {
       const handleClickOutside = () => {
-          if (maskContextMenu.visible) {
-              setMaskContextMenu({ visible: false, x: 0, y: 0, layerId: null });
+          if (canvasContextMenu.visible) {
+              setCanvasContextMenu({ visible: false, x: 0, y: 0 });
           }
       };
       window.addEventListener('click', handleClickOutside);
       return () => window.removeEventListener('click', handleClickOutside);
-  }, [maskContextMenu.visible]);
+  }, [canvasContextMenu.visible]);
 
   if (!canvasConfig) {
       return <SetupScreen onComplete={setCanvasConfig} />;
@@ -79,7 +75,7 @@ function App() {
       setCanvasConfig(null);
       setHistory([[]]);
       setHistoryStep(0);
-      handleSelectShape(null);
+      selectShape(null);
       setFilenamePrefix(''); 
       setBgEnabled(false);
       setBgColor('#000000'); 
@@ -100,7 +96,7 @@ function App() {
   const handleStageMouseDown = (e) => {
     if (activeTool === 'cursor') {
         const clickedOnEmpty = e.target === e.target.getStage() || e.target.name() === 'canvas-background';
-        if (clickedOnEmpty) handleSelectShape(null);
+        if (clickedOnEmpty) selectShape(null);
     } else if (activeTool === 'marquee') {
         setIsDrawingSelection(true);
         const pos = e.target.getStage().getPointerPosition();
@@ -127,50 +123,79 @@ function App() {
     }
   };
 
-  const handleApplyMask = () => {
-    if (!selectedId || !selectionRect) return;
-    
-    const normX = selectionRect.width < 0 ? selectionRect.x + selectionRect.width : selectionRect.x;
-    const normY = selectionRect.height < 0 ? selectionRect.y + selectionRect.height : selectionRect.y;
-    const normW = Math.abs(selectionRect.width);
-    const normH = Math.abs(selectionRect.height);
-
-    const imgToUpdate = images.find(img => img.id === selectedId);
-    if (imgToUpdate) {
-        updateImage(selectedId, {
-            ...imgToUpdate,
-            mask: { x: normX, y: normY, width: normW, height: normH, enabled: true, linked: true }
-        });
-    }
-    
-    setSelectionRect(null);
-    setActiveTool('cursor');
-    handleSelectShape(selectedId, 'mask'); 
-  };
-
-  const handleRightClickMask = (e, id) => {
-      e.preventDefault(); 
-      setMaskContextMenu({
-          visible: true,
-          x: e.pageX,
-          y: e.pageY,
-          layerId: id
-      });
-  };
-
-  const handleDeleteMask = () => {
-      if (!maskContextMenu.layerId) return;
-      const imgToUpdate = images.find(img => img.id === maskContextMenu.layerId);
-      
-      if (imgToUpdate) {
-          const { mask, ...imgWithoutMask } = imgToUpdate;
-          updateImage(maskContextMenu.layerId, imgWithoutMask);
-          
-          if (selectedId === maskContextMenu.layerId && activeTarget === 'mask') {
-              handleSelectShape(maskContextMenu.layerId, 'image'); 
-          }
+  // NEW: Right-click trigger for the canvas
+  const handleContextMenu = (e) => {
+      e.evt.preventDefault();
+      if (activeTool === 'marquee' && selectionRect && selectedId) {
+          setCanvasContextMenu({
+              visible: true,
+              x: e.evt.pageX,
+              y: e.evt.pageY
+          });
       }
-      setMaskContextMenu({ visible: false, x: 0, y: 0, layerId: null });
+  };
+
+  // NEW: The Destructive Edit Engine
+  const handleDestructiveEdit = (action) => {
+      if (!selectedId || !selectionRect) return;
+
+      const imgConfig = images.find(img => img.id === selectedId);
+      const node = stageRef.current.findOne('#' + selectedId);
+      
+      if (!imgConfig || !node) return;
+
+      const normX = selectionRect.width < 0 ? selectionRect.x + selectionRect.width : selectionRect.x;
+      const normY = selectionRect.height < 0 ? selectionRect.y + selectionRect.height : selectionRect.y;
+      const normW = Math.abs(selectionRect.width);
+      const normH = Math.abs(selectionRect.height);
+
+      const imgElement = new window.Image();
+      imgElement.crossOrigin = "anonymous";
+      imgElement.src = imgConfig.src;
+
+      imgElement.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = imgElement.width; 
+          canvas.height = imgElement.height;
+          const ctx = canvas.getContext('2d');
+          
+          ctx.drawImage(imgElement, 0, 0);
+
+          // Translate stage coordinates into local image pixels
+          const transform = node.getAbsoluteTransform().copy();
+          transform.invert();
+
+          const p1 = transform.point({ x: normX, y: normY });
+          const p2 = transform.point({ x: normX + normW, y: normY });
+          const p3 = transform.point({ x: normX + normW, y: normY + normH });
+          const p4 = transform.point({ x: normX, y: normY + normH });
+
+          const ratioX = canvas.width / imgConfig.width;
+          const ratioY = canvas.height / imgConfig.height;
+
+          ctx.beginPath();
+          ctx.moveTo(p1.x * ratioX, p1.y * ratioY);
+          ctx.lineTo(p2.x * ratioX, p2.y * ratioY);
+          ctx.lineTo(p3.x * ratioX, p3.y * ratioY);
+          ctx.lineTo(p4.x * ratioX, p4.y * ratioY);
+          ctx.closePath();
+
+          // destination-out erases the shape. destination-in keeps ONLY the shape.
+          if (action === 'delete') {
+              ctx.globalCompositeOperation = 'destination-out';
+              ctx.fill();
+          } else if (action === 'inverse') {
+              ctx.globalCompositeOperation = 'destination-in';
+              ctx.fill();
+          }
+
+          const newSrc = canvas.toDataURL('image/png');
+
+          updateImage(selectedId, { ...imgConfig, src: newSrc });
+          setSelectionRect(null);
+          setCanvasContextMenu({ visible: false, x: 0, y: 0 });
+          setActiveTool('cursor');
+      };
   };
 
   const handleImageUpload = (e) => {
@@ -200,11 +225,10 @@ function App() {
           shadow: false,
           visible: true,
           opacity: 100,
-          blendMode: 'source-over',
-          cornerRadius: 0
+          blendMode: 'source-over'
         };
         commitHistory([...images, newImage]);
-        handleSelectShape(newImage.id, 'image'); 
+        selectShape(newImage.id); 
         setActiveTool('cursor'); 
       };
     };
@@ -222,14 +246,14 @@ function App() {
     if (imgToUpdate) {
         const newVisibleState = imgToUpdate.visible === false ? true : false;
         updateImage(id, { ...imgToUpdate, visible: newVisibleState });
-        if (!newVisibleState && selectedId === id) handleSelectShape(null);
+        if (!newVisibleState && selectedId === id) selectShape(null);
     }
   };
 
   const deleteLayerById = (e, id) => {
     e.stopPropagation(); 
     commitHistory(images.filter((img) => img.id !== id));
-    if (selectedId === id) handleSelectShape(null);
+    if (selectedId === id) selectShape(null);
   };
 
   const handleDragStart = (e, id) => {
@@ -265,7 +289,7 @@ function App() {
   };
 
   const exportCanvas = (format) => {
-    handleSelectShape(null); 
+    selectShape(null); 
     setSelectionRect(null); 
     
     setTimeout(() => {
@@ -320,31 +344,13 @@ function App() {
 
       const deltaX = newWidth - selectedImage.width;
       const deltaY = newHeight - selectedImage.height;
-      const ratio = newWidth / selectedImage.width;
-
-      const finalX = selectedImage.x - (deltaX / 2);
-      const finalY = selectedImage.y - (deltaY / 2);
-
-      let newMask = selectedImage.mask;
-      if (newMask && newMask.linked) {
-          const offsetX = newMask.x - selectedImage.x;
-          const offsetY = newMask.y - selectedImage.y;
-          newMask = {
-              ...newMask,
-              x: finalX + (offsetX * ratio),
-              y: finalY + (offsetY * ratio),
-              width: newMask.width * ratio,
-              height: newMask.height * ratio
-          }
-      }
 
       updateImage(selectedId, {
           ...selectedImage,
           width: newWidth,
           height: newHeight,
-          x: finalX,
-          y: finalY,
-          mask: newMask
+          x: selectedImage.x - (deltaX / 2),
+          y: selectedImage.y - (deltaY / 2)
       });
   };
 
@@ -361,30 +367,12 @@ function App() {
       const newWidth = natW * scaleToFit;
       const newHeight = natH * scaleToFit;
 
-      const ratio = newWidth / selectedImage.width;
-      const finalX = (canvasConfig.width - newWidth) / 2;
-      const finalY = (canvasConfig.height - newHeight) / 2;
-
-      let newMask = selectedImage.mask;
-      if (newMask && newMask.linked) {
-          const offsetX = newMask.x - selectedImage.x;
-          const offsetY = newMask.y - selectedImage.y;
-          newMask = {
-              ...newMask,
-              x: finalX + (offsetX * ratio),
-              y: finalY + (offsetY * ratio),
-              width: newMask.width * ratio,
-              height: newMask.height * ratio
-          }
-      }
-
       updateImage(selectedId, {
           ...selectedImage,
           width: newWidth,
           height: newHeight,
-          x: finalX,
-          y: finalY,
-          mask: newMask
+          x: (canvasConfig.width - newWidth) / 2,
+          y: (canvasConfig.height - newHeight) / 2
       });
   };
 
@@ -395,23 +383,38 @@ function App() {
   return (
     <div className="app-layout">
       
-      {maskContextMenu.visible && (
+      {canvasContextMenu.visible && (
           <div style={{
               position: 'absolute',
-              top: maskContextMenu.y,
-              left: maskContextMenu.x,
+              top: canvasContextMenu.y,
+              left: canvasContextMenu.x,
               background: '#1f2937',
               border: '1px solid #374151',
               borderRadius: '6px',
               padding: '4px',
               zIndex: 1000,
+              minWidth: '180px',
               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
           }}>
               <button
-                  onClick={handleDeleteMask}
+                  onClick={() => handleDestructiveEdit('inverse')}
                   style={{
                       display: 'flex', alignItems: 'center', gap: '8px',
                       width: '100%', padding: '8px 16px',
+                      background: 'transparent', border: 'none',
+                      color: '#fff', fontSize: '0.85rem', cursor: 'pointer',
+                      textAlign: 'left', borderRadius: '4px', fontWeight: '500'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                  <Scissors size={16} /> Inverse Selection
+              </button>
+              <button
+                  onClick={() => handleDestructiveEdit('delete')}
+                  style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      width: '100%', padding: '8px 16px', marginTop: '2px',
                       background: 'transparent', border: 'none',
                       color: '#ef4444', fontSize: '0.85rem', cursor: 'pointer',
                       textAlign: 'left', borderRadius: '4px', fontWeight: '500'
@@ -419,7 +422,7 @@ function App() {
                   onMouseOver={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
                   onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                  <Trash2 size={16} /> Delete Layer Mask
+                  <Trash2 size={16} /> Delete Selection
               </button>
           </div>
       )}
@@ -498,8 +501,7 @@ function App() {
                 
                 {[...images].reverse().map((img) => {
                     const isVisible = img.visible !== false;
-                    const isImageTargeted = selectedId === img.id && activeTarget === 'image';
-                    const isMaskTargeted = selectedId === img.id && activeTarget === 'mask';
+                    const isImageTargeted = selectedId === img.id;
 
                     return (
                     <div 
@@ -519,7 +521,7 @@ function App() {
                         <div 
                             className="layer-item-left" 
                             onClick={() => {
-                                handleSelectShape(img.id, 'image');
+                                selectShape(img.id);
                                 setActiveTool('cursor'); 
                             }}
                             style={{ flex: 1, padding: '4px', borderRadius: '4px', background: isImageTargeted ? 'rgba(255,255,255,0.1)' : 'transparent' }}
@@ -529,51 +531,6 @@ function App() {
                         </div>
 
                         <div className="layer-item-actions">
-                            {img.mask && (
-                                <div style={{display: 'flex', alignItems: 'center', gap: '4px', marginRight: '6px', paddingRight: '6px', borderRight: '1px solid #4b5563'}}>
-                                    <button 
-                                        className="layer-action-btn" 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            updateImage(img.id, { ...img, mask: { ...img.mask, linked: !img.mask.linked } });
-                                        }} 
-                                        title={img.mask.linked ? "Unlink Mask" : "Link Mask"}
-                                        style={{color: img.mask.linked ? '#3b82f6' : '#9ca3af', padding: '2px'}}
-                                    >
-                                        {img.mask.linked ? <Link size={14} /> : <Unlink size={14} />}
-                                    </button>
-                                    
-                                    <div 
-                                        className="layer-action-btn"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (e.shiftKey) {
-                                                updateImage(img.id, { ...img, mask: { ...img.mask, enabled: !img.mask.enabled } });
-                                            } else {
-                                                handleSelectShape(img.id, 'mask');
-                                                setActiveTool('cursor');
-                                            }
-                                        }}
-                                        onContextMenu={(e) => handleRightClickMask(e, img.id)}
-                                        title="Shift+Click to Disable/Enable. Right-Click to delete."
-                                        style={{
-                                            position: 'relative',
-                                            cursor: 'pointer',
-                                            background: isMaskTargeted ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
-                                            border: isMaskTargeted ? '1px solid #3b82f6' : '1px solid transparent',
-                                            borderRadius: '4px',
-                                            padding: '2px',
-                                            color: img.mask.enabled ? (isMaskTargeted ? '#3b82f6' : '#fff') : '#ef4444'
-                                        }}
-                                    >
-                                        <SquareDashed size={16} />
-                                        {!img.mask.enabled && (
-                                            <X size={16} style={{position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', opacity: 0.9}} />
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
                             <button className="layer-action-btn" onClick={(e) => toggleVisibility(e, img.id)} title={isVisible ? "Hide Layer" : "Show Layer"}>
                                 {isVisible ? <Eye size={16} /> : <EyeOff size={16} />}
                             </button>
@@ -641,6 +598,7 @@ function App() {
                 onMouseDown={handleStageMouseDown} 
                 onMouseMove={handleStageMouseMove}
                 onMouseUp={handleStageMouseUp}
+                onContextMenu={handleContextMenu}
                 onTouchStart={handleStageMouseDown} 
                 onTouchMove={handleStageMouseMove}
                 onTouchEnd={handleStageMouseUp}
@@ -657,98 +615,21 @@ function App() {
                         />
                     )}
 
-                    {images.map((img) => {
-                        const hasMask = img.mask && img.mask.enabled;
-                        const isImageTargeted = img.id === selectedId && activeTarget === 'image';
-                        const isMaskTargeted = img.id === selectedId && activeTarget === 'mask';
-                        
-                        const imageNode = (
-                            <URLImage
-                                key={img.id}
-                                shapeProps={hasMask ? { ...img, shadow: false } : img}
-                                isDraggable={activeTool === 'cursor' && isImageTargeted}
-                                isSelected={isImageTargeted && activeTool === 'cursor'}
-                                onSelect={() => {
-                                    if (activeTool === 'cursor') handleSelectShape(img.id, 'image');
-                                }}
-                                onChange={(newAttrs) => updateImage(img.id, newAttrs)}
-                                keepRatio={keepRatio}
-                                canvasWidth={canvasConfig.width}
-                                canvasHeight={canvasConfig.height}
-                            />
-                        );
-
-                        if (hasMask) {
-                            return (
-                                <React.Fragment key={`mask-fragment-${img.id}`}>
-                                    
-                                    {/* NEW: The Shadow Plate */}
-                                    {img.shadow && (
-                                        <Rect
-                                            x={img.mask.x}
-                                            y={img.mask.y}
-                                            width={img.mask.width}
-                                            height={img.mask.height}
-                                            fill="#ffffff"
-                                            opacity={img.opacity !== undefined ? img.opacity / 100 : 1}
-                                            shadowColor="rgba(0,0,0,0.6)"
-                                            shadowBlur={30}
-                                            shadowOffsetY={15}
-                                            shadowOpacity={1}
-                                            listening={false} 
-                                            cornerRadius={img.cornerRadius || 0} 
-                                        />
-                                    )}
-
-                                    <Group  
-                                        id={`mask-group-${img.id}`}
-                                        clipX={img.mask.x} 
-                                        clipY={img.mask.y} 
-                                        clipWidth={img.mask.width} 
-                                        clipHeight={img.mask.height}
-                                    >
-                                        {imageNode}
-                                    </Group>
-
-                                    {img.id === selectedId && activeTool === 'cursor' && (
-                                        <Rect
-                                            x={img.mask.x}
-                                            y={img.mask.y}
-                                            width={img.mask.width}
-                                            height={img.mask.height}
-                                            stroke={isMaskTargeted ? "#10b981" : "rgba(16, 185, 129, 0.4)"} 
-                                            strokeWidth={isMaskTargeted ? 2 / scale : 1 / scale} 
-                                            dash={[5 / scale, 5 / scale]}
-                                            listening={isMaskTargeted && !img.mask.linked} 
-                                            draggable={isMaskTargeted && !img.mask.linked}
-                                            onMouseEnter={(e) => {
-                                                if (isMaskTargeted && !img.mask.linked) {
-                                                    e.target.getStage().container().style.cursor = 'move';
-                                                }
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.target.getStage().container().style.cursor = 'default';
-                                            }}
-                                            onDragMove={(e) => {
-                                                const group = e.target.getLayer().findOne(`#mask-group-${img.id}`);
-                                                if (group) {
-                                                    group.clipX(e.target.x());
-                                                    group.clipY(e.target.y());
-                                                }
-                                            }}
-                                            onDragEnd={(e) => {
-                                                e.target.getStage().container().style.cursor = 'default';
-                                                const newMask = { ...img.mask, x: e.target.x(), y: e.target.y() };
-                                                updateImage(img.id, { ...img, mask: newMask });
-                                            }}
-                                        />
-                                    )}
-                                </React.Fragment>
-                            );
-                        }
-                        
-                        return imageNode;
-                    })}
+                    {images.map((img) => (
+                        <URLImage
+                            key={img.id}
+                            shapeProps={img}
+                            isDraggable={activeTool === 'cursor'}
+                            isSelected={img.id === selectedId && activeTool === 'cursor'}
+                            onSelect={() => {
+                                if (activeTool === 'cursor') selectShape(img.id);
+                            }}
+                            onChange={(newAttrs) => updateImage(img.id, newAttrs)}
+                            keepRatio={keepRatio}
+                            canvasWidth={canvasConfig.width}
+                            canvasHeight={canvasConfig.height}
+                        />
+                    ))}
 
                     {selectionRect && (
                         <Rect
@@ -770,19 +651,6 @@ function App() {
 
       <aside className="properties-panel">
         <div className="panel-header">Properties</div>
-        
-        {activeTool === 'marquee' && selectionRect && selectedImage && (
-            <div style={{marginBottom: '15px', background: 'rgba(59, 130, 246, 0.1)', padding: '15px', borderRadius: '6px', border: '1px solid #3b82f6'}}>
-                <p style={{fontSize: '0.8rem', color: '#fff', marginTop: 0, marginBottom: '10px', textAlign: 'center'}}>Active Selection</p>
-                <button 
-                    className="tool-btn primary" 
-                    style={{width: '100%', justifyContent: 'center'}}
-                    onClick={handleApplyMask}
-                >
-                    Apply Mask to Layer
-                </button>
-            </div>
-        )}
 
         {!selectedImage ? (
             <p className="empty-text">Select an image on the canvas to edit its properties.</p>
@@ -801,24 +669,12 @@ function App() {
                     </div>
                 </div>
 
-                {activeTarget === 'image' && (
-                    <div className="control-group">
-                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                            <label>Scale</label>
-                            <span style={{fontSize: '0.8rem', color: '#9ca3af'}}>{currentScalePct}%</span>
-                        </div>
-                        <input type="range" min="1" max="500" value={currentScalePct} onChange={handleScaleChange} />
-                    </div>
-                )}
-
-                <hr style={{borderColor: '#374151', margin: '15px 0'}} />
-                
                 <div className="control-group">
                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                        <label style={{display: 'flex', alignItems: 'center', gap: '6px'}}><Crop size={14} /> Corner Radius</label>
-                        <span style={{fontSize: '0.8rem', color: '#9ca3af'}}>{selectedImage.cornerRadius || 0}px</span>
+                        <label>Scale</label>
+                        <span style={{fontSize: '0.8rem', color: '#9ca3af'}}>{currentScalePct}%</span>
                     </div>
-                    <input type="range" min="0" max="1000" value={selectedImage.cornerRadius || 0} onChange={(e) => updateImage(selectedId, { ...selectedImage, cornerRadius: Number(e.target.value) })} />
+                    <input type="range" min="1" max="500" value={currentScalePct} onChange={handleScaleChange} />
                 </div>
 
                 <hr style={{borderColor: '#374151', margin: '15px 0'}} />
