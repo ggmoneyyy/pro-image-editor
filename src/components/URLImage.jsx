@@ -48,6 +48,20 @@ const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canva
     node.y(newY);
   };
 
+  // Calculate crop rectangle if cropping is active
+  let cropConfig = undefined;
+  if (image && (shapeProps.cropLeft || shapeProps.cropRight || shapeProps.cropTop || shapeProps.cropBottom)) {
+      const natW = image.width;
+      const natH = image.height;
+      
+      const x = (natW * (shapeProps.cropLeft || 0)) / 100;
+      const y = (natH * (shapeProps.cropTop || 0)) / 100;
+      const width = natW - x - ((natW * (shapeProps.cropRight || 0)) / 100);
+      const height = natH - y - ((natH * (shapeProps.cropBottom || 0)) / 100);
+      
+      cropConfig = { x, y, width, height };
+  }
+
   return (
     <React.Fragment>
       <KonvaImage
@@ -61,7 +75,10 @@ const URLImage = ({ shapeProps, isSelected, onSelect, onChange, keepRatio, canva
         // NEW: Opacity and Blending Modes
         opacity={shapeProps.opacity !== undefined ? shapeProps.opacity / 100 : 1}
         globalCompositeOperation={shapeProps.blendMode || 'source-over'}
-        // End New
+        // NEW: Cropping and Masking
+        crop={cropConfig}
+        cornerRadius={shapeProps.cornerRadius || 0}
+        // Filters
         filters={shapeProps.blur > 0 ? [Konva.Filters.Blur] : []}
         blurRadius={shapeProps.blur || 0}
         shadowColor="rgba(0,0,0,0.6)"
