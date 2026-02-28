@@ -105,11 +105,6 @@ function App() {
           visible: true,
           opacity: 100,
           blendMode: 'source-over',
-          // New: Crop Defaults
-          cropLeft: 0,
-          cropRight: 0,
-          cropTop: 0,
-          cropBottom: 0,
           cornerRadius: 0
         };
         commitHistory([...images, newImage]);
@@ -215,49 +210,6 @@ function App() {
 
   const selectedImage = images.find(img => img.id === selectedId);
 
-  // NEW: Dynamic Crop Math to prevent image stretching
-  const handleCropChange = (edge, value) => {
-      if (!selectedImage) return;
-      const img = selectedImage;
-      const natW = img.naturalWidth || img.width;
-      const natH = img.naturalHeight || img.height;
-
-      const newCrop = {
-          left: img.cropLeft || 0,
-          right: img.cropRight || 0,
-          top: img.cropTop || 0,
-          bottom: img.cropBottom || 0,
-          [edge]: Number(value)
-      };
-
-      // Prevent overlapping crops that would crash the canvas
-      if (newCrop.left + newCrop.right >= 100) return;
-      if (newCrop.top + newCrop.bottom >= 100) return;
-
-      // Calculate the current scale factor so we can preserve it
-      const oldCropX = (natW * (img.cropLeft || 0)) / 100;
-      const oldCropRight = (natW * (img.cropRight || 0)) / 100;
-      const oldCropW = natW - oldCropX - oldCropRight;
-      const currentScale = img.width / oldCropW;
-
-      // Calculate the physical size of the new crop bounding box
-      const newCropX = (natW * newCrop.left) / 100;
-      const newCropY = (natH * newCrop.top) / 100;
-      const newCropW = natW - newCropX - ((natW * newCrop.right) / 100);
-      const newCropH = natH - newCropY - ((natH * newCrop.bottom) / 100);
-
-      updateImage(selectedId, {
-          ...img,
-          cropLeft: newCrop.left,
-          cropRight: newCrop.right,
-          cropTop: newCrop.top,
-          cropBottom: newCrop.bottom,
-          // Apply the current scale to the new physical box size
-          width: Math.max(5, newCropW * currentScale),
-          height: Math.max(5, newCropH * currentScale),
-      });
-  };
-
   const handleScaleChange = (e) => {
       const newScalePct = Number(e.target.value);
       if (!selectedImage) return;
@@ -265,12 +217,8 @@ function App() {
       const natW = selectedImage.naturalWidth || selectedImage.width;
       const natH = selectedImage.naturalHeight || selectedImage.height;
 
-      // Ensure we scale based on the CROPPED dimensions, not the full source dimensions
-      const cropW = natW - ((natW * (selectedImage.cropLeft || 0)) / 100) - ((natW * (selectedImage.cropRight || 0)) / 100);
-      const cropH = natH - ((natH * (selectedImage.cropTop || 0)) / 100) - ((natH * (selectedImage.cropBottom || 0)) / 100);
-
-      const newWidth = cropW * (newScalePct / 100);
-      const newHeight = cropH * (newScalePct / 100);
+      const newWidth = natW * (newScalePct / 100);
+      const newHeight = natH * (newScalePct / 100);
 
       const deltaX = newWidth - selectedImage.width;
       const deltaY = newHeight - selectedImage.height;
@@ -290,16 +238,12 @@ function App() {
       const natW = selectedImage.naturalWidth || selectedImage.width;
       const natH = selectedImage.naturalHeight || selectedImage.height;
 
-      // Fit based on crop box, not source box
-      const cropW = natW - ((natW * (selectedImage.cropLeft || 0)) / 100) - ((natW * (selectedImage.cropRight || 0)) / 100);
-      const cropH = natH - ((natH * (selectedImage.cropTop || 0)) / 100) - ((natH * (selectedImage.cropBottom || 0)) / 100);
-
       const scaleToFit = dimension === 'width' 
-          ? canvasConfig.width / cropW 
-          : canvasConfig.height / cropH;
+          ? canvasConfig.width / natW 
+          : canvasConfig.height / natH;
 
-      const newWidth = cropW * scaleToFit;
-      const newHeight = cropH * scaleToFit;
+      const newWidth = natW * scaleToFit;
+      const newHeight = natH * scaleToFit;
 
       updateImage(selectedId, {
           ...selectedImage,
@@ -310,14 +254,9 @@ function App() {
       });
   };
 
-  // Determine scale display percentage based on current crop box
-  const getScalePct = () => {
-      if (!selectedImage) return 100;
-      const natW = selectedImage.naturalWidth || selectedImage.width;
-      const cropW = natW - ((natW * (selectedImage.cropLeft || 0)) / 100) - ((natW * (selectedImage.cropRight || 0)) / 100);
-      return Math.round((selectedImage.width / cropW) * 100);
-  };
-  const currentScalePct = getScalePct();
+  const currentScalePct = selectedImage 
+    ? Math.round((selectedImage.width / (selectedImage.naturalWidth || selectedImage.width)) * 100) 
+    : 100;
 
   return (
     <div className="app-layout">
@@ -510,48 +449,12 @@ function App() {
 
                 <hr style={{borderColor: '#374151', margin: '15px 0'}} />
                 
-                {/* NEW: Cropping and Masking Section */}
-                <div style={{fontSize: '0.85rem', color: '#fff', marginBottom: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px'}}>
-                    <Crop size={14} /> Masking & Cropping
-                </div>
-
                 <div className="control-group">
                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                        <label>Corner Radius (Mask)</label>
+                        <label style={{display: 'flex', alignItems: 'center', gap: '6px'}}><Crop size={14} /> Corner Radius</label>
                         <span style={{fontSize: '0.8rem', color: '#9ca3af'}}>{selectedImage.cornerRadius || 0}px</span>
                     </div>
                     <input type="range" min="0" max="1000" value={selectedImage.cornerRadius || 0} onChange={(e) => updateImage(selectedId, { ...selectedImage, cornerRadius: Number(e.target.value) })} />
-                </div>
-
-                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px'}}>
-                    <div className="control-group">
-                        <div style={{display: 'flex', justifyContent: 'space-between'}}>
-                            <label style={{fontSize: '0.75rem'}}>Left</label>
-                            <span style={{fontSize: '0.7rem', color: '#9ca3af'}}>{selectedImage.cropLeft || 0}%</span>
-                        </div>
-                        <input type="range" min="0" max="99" value={selectedImage.cropLeft || 0} onChange={(e) => handleCropChange('cropLeft', e.target.value)} />
-                    </div>
-                    <div className="control-group">
-                        <div style={{display: 'flex', justifyContent: 'space-between'}}>
-                            <label style={{fontSize: '0.75rem'}}>Right</label>
-                            <span style={{fontSize: '0.7rem', color: '#9ca3af'}}>{selectedImage.cropRight || 0}%</span>
-                        </div>
-                        <input type="range" min="0" max="99" value={selectedImage.cropRight || 0} onChange={(e) => handleCropChange('cropRight', e.target.value)} />
-                    </div>
-                    <div className="control-group">
-                        <div style={{display: 'flex', justifyContent: 'space-between'}}>
-                            <label style={{fontSize: '0.75rem'}}>Top</label>
-                            <span style={{fontSize: '0.7rem', color: '#9ca3af'}}>{selectedImage.cropTop || 0}%</span>
-                        </div>
-                        <input type="range" min="0" max="99" value={selectedImage.cropTop || 0} onChange={(e) => handleCropChange('cropTop', e.target.value)} />
-                    </div>
-                    <div className="control-group">
-                        <div style={{display: 'flex', justifyContent: 'space-between'}}>
-                            <label style={{fontSize: '0.75rem'}}>Bottom</label>
-                            <span style={{fontSize: '0.7rem', color: '#9ca3af'}}>{selectedImage.cropBottom || 0}%</span>
-                        </div>
-                        <input type="range" min="0" max="99" value={selectedImage.cropBottom || 0} onChange={(e) => handleCropChange('cropBottom', e.target.value)} />
-                    </div>
                 </div>
 
                 <hr style={{borderColor: '#374151', margin: '15px 0'}} />
