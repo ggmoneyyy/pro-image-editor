@@ -387,7 +387,6 @@ function App() {
                 <MousePointer2 size={18} />
             </button>
             <button 
-                // FIXED: Removed the selectShape(null) here so you can keep the layer selected!
                 onClick={() => setActiveTool('marquee')}
                 style={{
                     flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
@@ -567,7 +566,8 @@ function App() {
                         const imageNode = (
                             <URLImage
                                 key={img.id}
-                                shapeProps={img}
+                                // FIXED: If masked, disable the inner image's shadow so the Group can handle it
+                                shapeProps={hasMask ? { ...img, shadow: false } : img}
                                 isDraggable={activeTool === 'cursor'}
                                 isSelected={img.id === selectedId && activeTool === 'cursor'}
                                 onSelect={() => {
@@ -582,15 +582,35 @@ function App() {
 
                         if (hasMask) {
                             return (
-                                <Group 
-                                    key={`mask-group-${img.id}`} 
-                                    clipX={img.mask.x} 
-                                    clipY={img.mask.y} 
-                                    clipWidth={img.mask.width} 
-                                    clipHeight={img.mask.height}
-                                >
-                                    {imageNode}
-                                </Group>
+                                <React.Fragment key={`mask-fragment-${img.id}`}>
+                                    {/* FIXED: Group now renders the shadow perfectly based on the clipped edges */}
+                                    <Group  
+                                        clipX={img.mask.x} 
+                                        clipY={img.mask.y} 
+                                        clipWidth={img.mask.width} 
+                                        clipHeight={img.mask.height}
+                                        shadowColor="rgba(0,0,0,0.6)"
+                                        shadowBlur={img.shadow ? 30 : 0}
+                                        shadowOffsetY={img.shadow ? 15 : 0}
+                                        shadowOpacity={img.shadow ? 1 : 0}
+                                    >
+                                        {imageNode}
+                                    </Group>
+
+                                    {/* NEW: Green Mask Visualizer when selected */}
+                                    {img.id === selectedId && activeTool === 'cursor' && (
+                                        <Rect
+                                            x={img.mask.x}
+                                            y={img.mask.y}
+                                            width={img.mask.width}
+                                            height={img.mask.height}
+                                            stroke="#10b981" 
+                                            strokeWidth={1 / scale} 
+                                            dash={[5 / scale, 5 / scale]}
+                                            listening={false} 
+                                        />
+                                    )}
+                                </React.Fragment>
                             );
                         }
                         
@@ -635,6 +655,45 @@ function App() {
             <p className="empty-text">Select an image on the canvas to edit its properties.</p>
         ) : (
             <div className="prop-controls">
+
+                {/* NEW: Mask Properties Panel */}
+                {selectedImage.mask && selectedImage.mask.enabled && (
+                    <>
+                        <div style={{fontSize: '0.85rem', color: '#fff', marginBottom: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+                                <SquareDashed size={14} color="#10b981" /> Mask Position
+                            </div>
+                            <button 
+                                className="tool-btn secondary"
+                                onClick={() => updateImage(selectedId, { ...selectedImage, mask: { ...selectedImage.mask, linked: !selectedImage.mask.linked } })}
+                                style={{ padding: '4px 8px', fontSize: '0.75rem', gap: '4px', background: selectedImage.mask.linked ? 'rgba(59, 130, 246, 0.1)' : 'transparent', color: selectedImage.mask.linked ? '#3b82f6' : '#9ca3af', border: selectedImage.mask.linked ? '1px solid #3b82f6' : '1px solid #4b5563' }}
+                            >
+                                {selectedImage.mask.linked ? <Link size={12} /> : <Unlink size={12} />}
+                                {selectedImage.mask.linked ? 'Linked' : 'Unlinked'}
+                            </button>
+                        </div>
+                        
+                        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '5px'}}>
+                            <div>
+                                <label style={{fontSize: '0.7rem', color: '#9ca3af'}}>X Position</label>
+                                <input type="number" value={Math.round(selectedImage.mask.x)} onChange={(e) => updateImage(selectedId, { ...selectedImage, mask: { ...selectedImage.mask, x: Number(e.target.value) } })} style={{width: '100%', boxSizing: 'border-box', background: '#111827', border: '1px solid #4b5563', color: 'white', padding: '6px', borderRadius: '4px', outline: 'none'}} />
+                            </div>
+                            <div>
+                                <label style={{fontSize: '0.7rem', color: '#9ca3af'}}>Y Position</label>
+                                <input type="number" value={Math.round(selectedImage.mask.y)} onChange={(e) => updateImage(selectedId, { ...selectedImage, mask: { ...selectedImage.mask, y: Number(e.target.value) } })} style={{width: '100%', boxSizing: 'border-box', background: '#111827', border: '1px solid #4b5563', color: 'white', padding: '6px', borderRadius: '4px', outline: 'none'}} />
+                            </div>
+                            <div>
+                                <label style={{fontSize: '0.7rem', color: '#9ca3af'}}>Width</label>
+                                <input type="number" value={Math.round(selectedImage.mask.width)} onChange={(e) => updateImage(selectedId, { ...selectedImage, mask: { ...selectedImage.mask, width: Number(e.target.value) } })} style={{width: '100%', boxSizing: 'border-box', background: '#111827', border: '1px solid #4b5563', color: 'white', padding: '6px', borderRadius: '4px', outline: 'none'}} />
+                            </div>
+                            <div>
+                                <label style={{fontSize: '0.7rem', color: '#9ca3af'}}>Height</label>
+                                <input type="number" value={Math.round(selectedImage.mask.height)} onChange={(e) => updateImage(selectedId, { ...selectedImage, mask: { ...selectedImage.mask, height: Number(e.target.value) } })} style={{width: '100%', boxSizing: 'border-box', background: '#111827', border: '1px solid #4b5563', color: 'white', padding: '6px', borderRadius: '4px', outline: 'none'}} />
+                            </div>
+                        </div>
+                        <hr style={{borderColor: '#374151', margin: '15px 0'}} />
+                    </>
+                )}
                 
                 <div className="control-group">
                     <label>Fit to Canvas</label>
