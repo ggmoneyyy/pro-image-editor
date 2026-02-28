@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Stage, Layer, Rect } from 'react-konva';
+import { Stage, Layer, Rect, Group } from 'react-konva'; // Added Group for clipping masks
 import { 
   ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette, Crop,
   MousePointer2, SquareDashed 
@@ -79,15 +79,13 @@ function App() {
   const handleUndo = () => { if (historyStep > 0) setHistoryStep(historyStep - 1); };
   const handleRedo = () => { if (historyStep < history.length - 1) setHistoryStep(historyStep + 1); };
 
-  // FIXED: Drawing logic now trusts Konva's internal unscaled coordinates
   const handleStageMouseDown = (e) => {
     if (activeTool === 'cursor') {
         const clickedOnEmpty = e.target === e.target.getStage() || e.target.name() === 'canvas-background';
         if (clickedOnEmpty) selectShape(null);
     } else if (activeTool === 'marquee') {
         setIsDrawingSelection(true);
-        selectShape(null); 
-        
+        // We removed selectShape(null) here so you don't lose your selected layer while drawing!
         const pos = e.target.getStage().getPointerPosition();
         setSelectionRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
     }
@@ -95,9 +93,7 @@ function App() {
 
   const handleStageMouseMove = (e) => {
     if (!isDrawingSelection || activeTool !== 'marquee') return;
-    
     const pos = e.target.getStage().getPointerPosition();
-
     setSelectionRect((prev) => ({
         ...prev,
         width: pos.x - prev.x,
@@ -112,6 +108,28 @@ function App() {
             setSelectionRect(null);
         }
     }
+  };
+
+  // NEW: Masking Logic
+  const handleApplyMask = () => {
+    if (!selectedId || !selectionRect) return;
+    
+    // Normalize negative widths/heights from dragging backwards
+    const normX = selectionRect.width < 0 ? selectionRect.x + selectionRect.width : selectionRect.x;
+    const normY = selectionRect.height < 0 ? selectionRect.y + selectionRect.height : selectionRect.y;
+    const normW = Math.abs(selectionRect.width);
+    const normH = Math.abs(selectionRect.height);
+
+    const imgToUpdate = images.find(img => img.id === selectedId);
+    if (imgToUpdate) {
+        updateImage(selectedId, {
+            ...imgToUpdate,
+            mask: { x: normX, y: normY, width: normW, height: normH, enabled: true }
+        });
+    }
+    
+    setSelectionRect(null);
+    setActiveTool('cursor');
   };
 
   const handleImageUpload = (e) => {
@@ -336,10 +354,7 @@ function App() {
                 <MousePointer2 size={18} />
             </button>
             <button 
-                onClick={() => {
-                    setActiveTool('marquee');
-                    selectShape(null); 
-                }}
+                onClick={() => setActiveTool('marquee')}
                 style={{
                     flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
                     background: activeTool === 'marquee' ? '#3b82f6' : 'transparent',
@@ -401,6 +416,22 @@ function App() {
                             <span className={!isVisible ? 'dimmed-text' : ''}>{img.name}</span>
                         </div>
                         <div className="layer-item-actions">
+                            
+                            {/* NEW: Mask Toggle Button */}
+                            {img.mask && (
+                                <button 
+                                    className="layer-action-btn" 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateImage(img.id, { ...img, mask: { ...img.mask, enabled: !img.mask.enabled } });
+                                    }} 
+                                    title={img.mask.enabled ? "Disable Mask" : "Enable Mask"}
+                                    style={{color: img.mask.enabled ? '#3b82f6' : '#9ca3af'}}
+                                >
+                                    <SquareDashed size={16} />
+                                </button>
+                            )}
+
                             <button className="layer-action-btn" onClick={(e) => toggleVisibility(e, img.id)} title={isVisible ? "Hide Layer" : "Show Layer"}>
                                 {isVisible ? <Eye size={16} /> : <EyeOff size={16} />}
                             </button>
@@ -484,22 +515,42 @@ function App() {
                         />
                     )}
 
-                    {images.map((img) => (
-                        <URLImage
-                            key={img.id}
-                            shapeProps={img}
-                            // FIXED: Added isDraggable mapping
-                            isDraggable={activeTool === 'cursor'}
-                            isSelected={img.id === selectedId && activeTool === 'cursor'}
-                            onSelect={() => {
-                                if (activeTool === 'cursor') selectShape(img.id);
-                            }}
-                            onChange={(newAttrs) => updateImage(img.id, newAttrs)}
-                            keepRatio={keepRatio}
-                            canvasWidth={canvasConfig.width}
-                            canvasHeight={canvasConfig.height}
-                        />
-                    ))}
+                    {images.map((img) => {
+                        const hasMask = img.mask && img.mask.enabled;
+                        
+                        const imageNode = (
+                            <URLImage
+                                key={img.id}
+                                shapeProps={img}
+                                isDraggable={activeTool === 'cursor'}
+                                isSelected={img.id === selectedId && activeTool === 'cursor'}
+                                onSelect={() => {
+                                    if (activeTool === 'cursor') selectShape(img.id);
+                                }}
+                                onChange={(newAttrs) => updateImage(img.id, newAttrs)}
+                                keepRatio={keepRatio}
+                                canvasWidth={canvasConfig.width}
+                                canvasHeight={canvasConfig.height}
+                            />
+                        );
+
+                        // NEW: Wrapper that applies the invisible mask clipping window
+                        if (hasMask) {
+                            return (
+                                <Group 
+                                    key={`mask-group-${img.id}`} 
+                                    clipX={img.mask.x} 
+                                    clipY={img.mask.y} 
+                                    clipWidth={img.mask.width} 
+                                    clipHeight={img.mask.height}
+                                >
+                                    {imageNode}
+                                </Group>
+                            );
+                        }
+                        
+                        return imageNode;
+                    })}
 
                     {selectionRect && (
                         <Rect
@@ -522,6 +573,20 @@ function App() {
       <aside className="properties-panel">
         <div className="panel-header">Properties</div>
         
+        {/* NEW: Apply Mask Button */}
+        {activeTool === 'marquee' && selectionRect && selectedImage && (
+            <div style={{marginBottom: '15px', background: 'rgba(59, 130, 246, 0.1)', padding: '15px', borderRadius: '6px', border: '1px solid #3b82f6'}}>
+                <p style={{fontSize: '0.8rem', color: '#fff', marginTop: 0, marginBottom: '10px', textAlign: 'center'}}>Active Selection</p>
+                <button 
+                    className="tool-btn primary" 
+                    style={{width: '100%', justifyContent: 'center'}}
+                    onClick={handleApplyMask}
+                >
+                    Apply Mask to Layer
+                </button>
+            </div>
+        )}
+
         {!selectedImage ? (
             <p className="empty-text">Select an image on the canvas to edit its properties.</p>
         ) : (
