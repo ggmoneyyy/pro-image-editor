@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Rect, Group } from 'react-konva'; 
 import { 
   ImagePlus, Layers, Undo2, Redo2, GripVertical, Eye, EyeOff, X, MoveHorizontal, MoveVertical, Monitor, Palette, Crop,
-  MousePointer2, SquareDashed, Link, Unlink // NEW: Link Icons
+  MousePointer2, SquareDashed, Link, Unlink
 } from 'lucide-react';
 import SetupScreen from './components/SetupScreen';
 import URLImage from './components/URLImage';
@@ -121,7 +121,6 @@ function App() {
     if (imgToUpdate) {
         updateImage(selectedId, {
             ...imgToUpdate,
-            // NEW: Default to linked: true when created
             mask: { x: normX, y: normY, width: normW, height: normH, enabled: true, linked: true }
         });
     }
@@ -265,7 +264,6 @@ function App() {
 
   const selectedImage = images.find(img => img.id === selectedId);
 
-  // UPDATED: Slider math to support linked masks
   const handleScaleChange = (e) => {
       const newScalePct = Number(e.target.value);
       if (!selectedImage) return;
@@ -389,10 +387,8 @@ function App() {
                 <MousePointer2 size={18} />
             </button>
             <button 
-                onClick={() => {
-                    setActiveTool('marquee');
-                    selectShape(null); 
-                }}
+                // FIXED: Removed the selectShape(null) here so you can keep the layer selected!
+                onClick={() => setActiveTool('marquee')}
                 style={{
                     flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
                     background: activeTool === 'marquee' ? '#3b82f6' : 'transparent',
@@ -455,7 +451,6 @@ function App() {
                         </div>
                         <div className="layer-item-actions">
                             
-                            {/* NEW: Link/Unlink Toggle Button */}
                             {img.mask && (
                                 <>
                                     <button 
